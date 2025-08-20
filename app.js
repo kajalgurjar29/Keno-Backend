@@ -17,6 +17,10 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const server = createServer(app);
 
+app.get("/", (req, res) => {
+  res.send("Backend running...");
+});
+
 app.use(
   cors({
     origin: "*",
