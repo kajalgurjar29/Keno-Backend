@@ -4,7 +4,7 @@ import bodyParser from "body-parser";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import { connectDB } from "./db/db.config.js";
+import { connectDB } from "./src/db/db.config.js";
 import { createServer } from "http";
 
 dotenv.config({ path: "./.env" });
@@ -33,10 +33,10 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 console.log("Middleware initialized.");
 
 // Importing Routes
-import userRoutes from "./routers/User.router.js";
-import forgotPasswordRoutes from "./routers/forgotPassword.router.js";
-import resetPasswordRoutes from "./routers/resetPassword.router.js";
-import profileManagementRoutes from "./routers/profileManagement.router.js";
+import userRoutes from "./src/routers/User.router.js";
+import forgotPasswordRoutes from "./src/routers/forgotPassword.router.js";
+import resetPasswordRoutes from "./src/routers/resetPassword.router.js";
+import profileManagementRoutes from "./src/routers/profileManagement.router.js";
 
 // API Routes
 app.use("/api/v1/users", userRoutes, forgotPasswordRoutes);
