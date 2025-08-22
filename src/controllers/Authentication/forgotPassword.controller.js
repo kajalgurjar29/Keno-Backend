@@ -50,7 +50,6 @@ export const requestPasswordReset = async (req, res) => {
   }
 };
 
-
 // @desc Reset user password
 // @route POST /api/forgot-password/reset-password
 // @access Public
