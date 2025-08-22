@@ -8,7 +8,7 @@ import { connectDB } from "./src/db/db.config.js";
 import { createServer } from "http";
 
 dotenv.config({ path: "./.env" });
-
+//kajal
 connectDB();
 
 const __filename = fileURLToPath(import.meta.url);
