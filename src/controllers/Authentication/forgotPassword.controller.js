@@ -50,10 +50,12 @@ export const requestPasswordReset = async (req, res) => {
   }
 };
 
+
 // @desc Reset user password
 // @route POST /api/forgot-password/reset-password
 // @access Public
 // This is the second step where user resets their password using the OTP
+
 export const resetPassword = async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
