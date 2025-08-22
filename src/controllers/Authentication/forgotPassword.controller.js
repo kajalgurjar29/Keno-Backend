@@ -83,3 +83,32 @@ export const resetPassword = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+export const resetPasswords = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const otpRecord = await OtpToken.findOne({ userId: user._id, otp });
+    if (!otpRecord) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    if (otpRecord.expiry < new Date()) {
+      return res.status(400).json({ message: "OTP expired" });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    await OtpToken.deleteOne({ _id: otpRecord._id });
+
+    res.status(200).json({ message: "Password reset successful" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
