@@ -54,9 +54,10 @@ export const requestPasswordReset = async (req, res) => {
 // @route POST /api/forgot-password/reset-password
 // @access Public
 // This is the second step where user resets their password using the OTP
-export const resetPassword = async (req, res) => {
+
+export const verifyOtp = async (req, res) => {
   try {
-    const { email, otp, newPassword } = req.body;
+    const { email, otp } = req.body;
 
     const user = await User.findOne({ email });
     if (!user) {
@@ -72,12 +73,31 @@ export const resetPassword = async (req, res) => {
       return res.status(400).json({ message: "OTP expired" });
     }
 
+    // OTP is valid ✅
+    return res.status(200).json({
+      message: "OTP verified successfully",
+      success: true,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const setNewPassword = async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
     user.password = newPassword;
     await user.save();
 
-    await OtpToken.deleteOne({ _id: otpRecord._id });
-
-    res.status(200).json({ message: "Password reset successful" });
+    return res
+      .status(200)
+      .json({ message: "Password reset successful", success: true });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
