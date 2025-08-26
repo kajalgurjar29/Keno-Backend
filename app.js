@@ -16,9 +16,6 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const server = createServer(app);
-app.get("/", (req, res) => {
-  res.send("Backend running...");
-});
 
 app.use(
   cors({
@@ -40,12 +37,14 @@ import userRoutes from "./src/routers/User.router.js";
 import forgotPasswordRoutes from "./src/routers/forgotPassword.router.js";
 import resetPasswordRoutes from "./src/routers/resetPassword.router.js";
 import profileManagementRoutes from "./src/routers/profileManagement.router.js";
+import ticketRoutes from "./src/routers/myticket.router.js";
 
 // API Routes
 app.use("/api/v1/users", userRoutes, forgotPasswordRoutes);
 // app.use("/api/v1/forgot-password", forgotPasswordRoutes);
 app.use("/api/v1/reset-password", resetPasswordRoutes);
 app.use("/api/v1/profile", profileManagementRoutes);
+app.use("/api/v1/tickets", ticketRoutes);
 
 if (!process.env.PORT) {
   console.error("Missing environment variables! Check .env file.");
