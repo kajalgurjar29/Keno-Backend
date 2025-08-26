@@ -51,9 +51,9 @@ export const requestPasswordReset = async (req, res) => {
 };
 
 // @desc Reset user password
-// @route POST /api/forgot-password/reset-password
+// @route POST /api/forgot-password/verify-otp
 // @access Public
-// This is the second step where user resets their password using the OTP
+// This is the second step where user verifies the OTP
 
 export const verifyOtp = async (req, res) => {
   try {
@@ -83,6 +83,11 @@ export const verifyOtp = async (req, res) => {
   }
 };
 
+// @desc Reset user password
+// @route POST /api/forgot-password/reset-password
+// @access Public
+// This is the final step where user sets a new password
+
 export const setNewPassword = async (req, res) => {
   try {
     const { email, newPassword } = req.body;
@@ -102,5 +107,3 @@ export const setNewPassword = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
-// hello
