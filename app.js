@@ -38,6 +38,7 @@ import forgotPasswordRoutes from "./src/routers/forgotPassword.router.js";
 import resetPasswordRoutes from "./src/routers/resetPassword.router.js";
 import profileManagementRoutes from "./src/routers/profileManagement.router.js";
 import ticketRoutes from "./src/routers/myticket.router.js";
+import combinationRoutes from "./src/routers/combination.router.js";
 
 // API Routes
 app.use("/api/v1/users", userRoutes, forgotPasswordRoutes);
@@ -45,6 +46,7 @@ app.use("/api/v1/users", userRoutes, forgotPasswordRoutes);
 app.use("/api/v1/reset-password", resetPasswordRoutes);
 app.use("/api/v1/profile", profileManagementRoutes);
 app.use("/api/v1/tickets", ticketRoutes);
+app.use("/api/v1/combinations", combinationRoutes);
 
 if (!process.env.PORT) {
   console.error("Missing environment variables! Check .env file.");
