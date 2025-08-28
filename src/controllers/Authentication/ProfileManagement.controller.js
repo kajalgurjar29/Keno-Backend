@@ -61,3 +61,19 @@ export const updateUserData = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
+export const getAllUsers = async (req, res) => {
+  try {
+    // Fetch all users, excluding password and role
+    const users = await User.find().select("-password -role");
+
+    if (!users || users.length === 0) {
+      return res.status(404).json({ message: "No users found" });
+    }
+
+    res.status(200).json(users);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
