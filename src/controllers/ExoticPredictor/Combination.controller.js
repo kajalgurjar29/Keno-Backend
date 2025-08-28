@@ -43,3 +43,13 @@ export const generateCombinations = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// GET API – fetch all saved combinations
+export const getCombinations = async (req, res) => {
+  try {
+    const combinations = await Combination.find().sort({ createdAt: -1 }); // latest first
+    res.status(200).json({ combinations });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
