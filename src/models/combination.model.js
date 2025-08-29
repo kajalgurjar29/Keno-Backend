@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 const combinationSchema = new mongoose.Schema({
   betType: {
     type: String,
-    enum: ["Quinella", "Trifecta", "Exacta"], // example types
+    enum: ["Quinella", "Trifecta", "First Four"],
     required: true,
   },
   numbers: {

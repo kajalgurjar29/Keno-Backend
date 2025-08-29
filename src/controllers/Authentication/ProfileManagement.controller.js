@@ -62,6 +62,11 @@ export const updateUserData = async (req, res) => {
   }
 };
 
+// @desc Update user data
+// @route GET /api/profile/users
+// Fetch all users (admin only)
+// @access Private
+
 export const getAllUsers = async (req, res) => {
   try {
     // Fetch all users, excluding password and role
@@ -74,6 +79,41 @@ export const getAllUsers = async (req, res) => {
     res.status(200).json(users);
   } catch (error) {
     console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// @desc Update user data
+// @route PATCH /api/profile/:id/status
+// Change user status (active/inactive) - admin only
+// @access Private
+
+export const changeUserStatus = async (req, res) => {
+  try {
+    const { id } = req.params; // user id
+    const { status } = req.body; // new status (active/inactive)
+
+    // Validate status
+    if (!["active", "inactive"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status value" });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true, select: "-password -otp -otpExpiry" }
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({
+      message: `User status updated to ${status}`,
+      user,
+    });
+  } catch (error) {
+    console.error("Error changing status:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
