@@ -69,11 +69,13 @@ export const updateUserData = async (req, res) => {
 
 export const getAllUsers = async (req, res) => {
   try {
-    // Fetch all users, excluding password and role
-    const users = await User.find().select("-password -role");
+    // Fetch only verified users, excluding password and role
+    const users = await User.find({ isVerified: true }).select(
+      "-password -role"
+    );
 
     if (!users || users.length === 0) {
-      return res.status(404).json({ message: "No users found" });
+      return res.status(404).json({ message: "No verified users found" });
     }
 
     res.status(200).json(users);
