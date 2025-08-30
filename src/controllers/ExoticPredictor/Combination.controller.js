@@ -19,13 +19,31 @@ export const generateCombinations = async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
+    // set numbers count based on betType
+    let numCount = 0;
+    switch (betType) {
+      case "Quinella":
+        numCount = 2;
+        break;
+      case "Trifecta":
+        numCount = 3;
+        break;
+      case "First Four":
+        numCount = 4;
+        break;
+      default:
+        return res.status(400).json({ message: "Invalid bet type" });
+    }
+
     let combinations = [];
     for (let i = 0; i < numCombinations; i++) {
-      let numbers = generateRandomNumbers(4, 20); // example: 4 numbers from 1–20
+      let numbers = generateRandomNumbers(numCount, 20);
+      const percentage = Math.floor(Math.random() * 100);
+
       combinations.push({
         betType,
         numbers,
-        percentage: Math.floor(Math.random() * 100), // mock percentage
+        percentage,
         racesSince: minRaces,
       });
 
@@ -33,7 +51,7 @@ export const generateCombinations = async (req, res) => {
       await Combination.create({
         betType,
         numbers,
-        percentage: Math.floor(Math.random() * 100),
+        percentage,
         racesSince: minRaces,
       });
     }
