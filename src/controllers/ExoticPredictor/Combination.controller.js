@@ -11,6 +11,7 @@ const generateRandomNumbers = (count, max = 20) => {
   return nums;
 };
 
+// POST API – generate combinations based on user input
 export const generateCombinations = async (req, res) => {
   try {
     const { betType, minRaces, numCombinations } = req.body;
@@ -72,4 +73,15 @@ export const getCombinations = async (req, res) => {
   }
 };
 
+// GET API – fetch the most recent three combinations
+export const getMostRecentThreeCombinations = async (req, res) => {
+  try {
+    const combinations = await Combination.find()
+      .sort({ createdAt: -1 }) // latest first
+      .limit(3); // only 3 entries
 
+    res.status(200).json({ combinations });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
