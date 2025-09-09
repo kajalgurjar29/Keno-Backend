@@ -1,13 +1,12 @@
-import puppeteer from "puppeteer-core";
+import puppeteer from "puppeteer";
 
 export const scrapeNSWKeno = async () => {
   const url = "https://www.keno.com.au/check-results";
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    executablePath: "/usr/bin/chromium", // system Chrome
-    args: ["--no-sandbox", "--disable-setuid-sandbox"], // required on Render
-  });
+  // const browser = await puppeteer.launch({
+  //   headless: true,
+  //   args: ["--no-sandbox", "--disable-setuid-sandbox"], // required for Render
+  // });
 
   const page = await browser.newPage();
   await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
