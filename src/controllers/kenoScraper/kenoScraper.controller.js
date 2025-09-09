@@ -5,8 +5,15 @@ export const scrapeNSWKeno = async () => {
   try {
     browser = await puppeteer.launch({
       headless: true,
-      executablePath: puppeteer.executablePath(), // Puppeteer finds its own Chromium
-      args: ["--no-sandbox", "--disable-setuid-sandbox"], // Required for Render/Docker
+      executablePath: process.env.CHROMIUM_PATH || "/usr/bin/chromium",
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--no-zygote",
+        "--single-process",
+      ],
     });
 
     const page = await browser.newPage();
@@ -22,7 +29,9 @@ export const scrapeNSWKeno = async () => {
     const data = await page.evaluate(() => {
       const balls = Array.from(
         document.querySelectorAll(".game-ball-wrapper.is-drawn.is-placed")
-      ).map((el) => parseInt(el.textContent.trim(), 10));
+      )
+        .map((el) => parseInt(el.textContent.trim(), 10))
+        .filter((n) => !isNaN(n));
 
       const drawText =
         document.querySelector(".game-board-status-heading")?.textContent ||
