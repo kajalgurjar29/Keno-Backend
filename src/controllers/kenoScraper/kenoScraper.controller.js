@@ -1,30 +1,19 @@
 import puppeteer from "puppeteer";
-import { join } from "path";
-import { readdirSync } from "fs";
 
 export const scrapeNSWKeno = async () => {
-  const url = "https://www.keno.com.au/check-results";
   let browser;
-
   try {
-    // Dynamically find Chrome inside Render cache
-    const basePath = "/opt/render/.cache/puppeteer/chrome";
-    const versions = readdirSync(basePath); // e.g. ["linux-140.0.7339.80"]
-    const chromePath = join(
-      basePath,
-      versions[0], // pick first installed version
-      "chrome-linux64",
-      "chrome"
-    );
-
     browser = await puppeteer.launch({
       headless: true,
-      executablePath: chromePath,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      executablePath: puppeteer.executablePath(), // Puppeteer finds its own Chromium
+      args: ["--no-sandbox", "--disable-setuid-sandbox"], // Required for Render/Docker
     });
 
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+    await page.goto("https://www.keno.com.au/check-results", {
+      waitUntil: "networkidle2",
+      timeout: 60000,
+    });
 
     await page.waitForSelector(".game-ball-wrapper.is-drawn.is-placed", {
       timeout: 20000,
