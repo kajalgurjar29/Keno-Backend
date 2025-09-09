@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: keno-scraper
+    env: node
+    plan: free
+    buildCommand: |
+      apt-get update
+      apt-get install -y chromium
+      yarn install
+    startCommand: node app.js
+    envVars:
+      - key: CHROMIUM_PATH
+        value: /usr/bin/chromium

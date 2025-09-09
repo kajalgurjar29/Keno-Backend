@@ -5,7 +5,7 @@ export const scrapeNSWKeno = async () => {
   try {
     browser = await puppeteer.launch({
       headless: true,
-      executablePath: process.env.CHROMIUM_PATH || "/usr/bin/chromium",
+      executablePath: process.env.CHROMIUM_PATH || puppeteer.executablePath(),
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
