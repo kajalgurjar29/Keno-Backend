@@ -5,21 +5,20 @@ export const scrapeNSWKeno = async () => {
   let browser;
 
   try {
-    // Launch browser (important: required on servers like Render)
     browser = await puppeteer.launch({
       headless: true,
+      executablePath:
+        "/opt/render/.cache/puppeteer/chrome/linux-140.0.7339.80/chrome-linux64/chrome",
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
 
-    // Wait for results to appear
     await page.waitForSelector(".game-ball-wrapper.is-drawn.is-placed", {
       timeout: 20000,
     });
 
-    // Scrape data from the page
     const data = await page.evaluate(() => {
       const balls = Array.from(
         document.querySelectorAll(".game-ball-wrapper.is-drawn.is-placed")
@@ -35,7 +34,7 @@ export const scrapeNSWKeno = async () => {
           ?.value || "";
 
       return {
-        draw: drawText.replace(/[^\d]/g, ""), // extract only numbers
+        draw: drawText.replace(/[^\d]/g, ""),
         date: dateText.trim(),
         numbers: balls,
       };
@@ -46,8 +45,6 @@ export const scrapeNSWKeno = async () => {
     console.error("Scraping error:", err.message);
     return { error: err.message };
   } finally {
-    if (browser) {
-      await browser.close(); // Always close safely
-    }
+    if (browser) await browser.close();
   }
 };
