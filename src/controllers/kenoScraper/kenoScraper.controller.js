@@ -1,14 +1,25 @@
 import puppeteer from "puppeteer";
+import { join } from "path";
+import { readdirSync } from "fs";
 
 export const scrapeNSWKeno = async () => {
   const url = "https://www.keno.com.au/check-results";
   let browser;
 
   try {
+    // Dynamically find Chrome inside Render cache
+    const basePath = "/opt/render/.cache/puppeteer/chrome";
+    const versions = readdirSync(basePath); // e.g. ["linux-140.0.7339.80"]
+    const chromePath = join(
+      basePath,
+      versions[0], // pick first installed version
+      "chrome-linux64",
+      "chrome"
+    );
+
     browser = await puppeteer.launch({
       headless: true,
-      executablePath:
-        "/opt/render/.cache/puppeteer/chrome/linux-140.0.7339.80/chrome-linux64/chrome",
+      executablePath: chromePath,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
