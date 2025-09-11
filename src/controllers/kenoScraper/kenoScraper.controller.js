@@ -1,17 +1,24 @@
 import puppeteer from "puppeteer-core";
 import chromium from "chromium";
 
+// Scraper function
 export const scrapeNSWKeno = async () => {
-  const proxy = "spr1wu95yq:w06feLHNn1Cma3=ioy@au.decodo.com:30001";
+  // Load proxy details from env (set in your .env file)
+  const proxyHost = process.env.PROXY_HOST || "au.decodo.com";
+  const proxyPort = process.env.PROXY_PORT || "30001";
+  const proxyUser = process.env.PROXY_USER || "spr1wu95yq";
+  const proxyPass = process.env.PROXY_PASS || "w06feLHNn1Cma3=ioy";
+
+  const proxyUrl = `http://${proxyHost}:${proxyPort}`;
 
   const args = [
     "--no-sandbox",
     "--disable-setuid-sandbox",
     "--disable-dev-shm-usage",
-    `--proxy-server=http://${proxy}`,
+    `--proxy-server=${proxyUrl}`,
   ];
 
-  // Make sure chromium is installed on server, else use puppeteer-core fails
+  // Ensure Chromium path is correct
   const executablePath = process.env.CHROMIUM_PATH || chromium.path;
 
   const browser = await puppeteer.launch({
@@ -22,24 +29,27 @@ export const scrapeNSWKeno = async () => {
 
   const page = await browser.newPage();
 
-  // If your proxy requires authentication in a popup (Decodo sometimes does)
-  if (proxy.includes("@")) {
-    const [auth] = proxy.split("@");
-    const [username, password] = auth.split(":");
-    await page.authenticate({ username, password });
+  // Handle proxy authentication (Decodo requires this separately)
+  if (proxyUser && proxyPass) {
+    await page.authenticate({
+      username: proxyUser,
+      password: proxyPass,
+    });
   }
 
   try {
+    // Navigate to Keno results page
     await page.goto("https://www.keno.com.au/check-results", {
       waitUntil: "networkidle2",
+      timeout: 120000, // increased timeout for server/proxy lag
+    });
+
+    // Wait for numbers to appear
+    await page.waitForSelector(".game-ball-wrapper.is-drawn.is-placed", {
       timeout: 60000,
     });
 
-    // Wait longer if server is slow behind proxy
-    await page.waitForSelector(".game-ball-wrapper.is-drawn.is-placed", {
-      timeout: 40000,
-    });
-
+    // Extract game data
     const data = await page.evaluate(() => {
       const balls = Array.from(
         document.querySelectorAll(".game-ball-wrapper.is-drawn.is-placed")
@@ -66,7 +76,8 @@ export const scrapeNSWKeno = async () => {
     await browser.close();
     return data;
   } catch (err) {
+    console.error("Scraping failed:", err.message);
     await browser.close();
-    throw new Error("Scraping failed: " + err.message);
+    throw err;
   }
 };
