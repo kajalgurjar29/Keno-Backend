@@ -83,7 +83,6 @@ export const scrapeNSWKeno = async () => {
   }
 };
 
-// Helper to filter numbers until first decrease
 const filterIncreasingNumbers = (numbers) => {
   const result = [];
   for (let i = 0; i < numbers.length; i++) {
@@ -94,6 +93,28 @@ const filterIncreasingNumbers = (numbers) => {
     }
   }
   return result;
+};
+
+// Small retry helper
+const retry = async (fn, retries = 3, delay = 2000) => {
+  let lastError;
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      console.warn(`Retry ${i + 1}/${retries} failed: ${err.message}`);
+      if (
+        err.message.includes("frame got detached") ||
+        err.message.includes("Execution context was destroyed")
+      ) {
+        await new Promise((res) => setTimeout(res, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
 };
 
 // Scraper function
@@ -135,41 +156,39 @@ export const scrapeNSWKenobyGame = async () => {
       timeout: 120000,
     });
 
-    // Wait until any game ball appears (robust for class changes)
-    await page.waitForFunction(
-      () => document.querySelectorAll(".game-ball-wrapper").length > 0,
-      { timeout: 90000 }
+    // More stable: wait for at least one game-ball-wrapper element
+    await retry(() =>
+      page.waitForSelector(".game-ball-wrapper", { timeout: 60000 })
     );
 
-    const data = await page.evaluate(() => {
-      // Select all balls
-      const allBalls = Array.from(
-        document.querySelectorAll(".game-ball-wrapper")
-      );
+    const data = await retry(async () => {
+      return await page.evaluate(() => {
+        const allBalls = Array.from(
+          document.querySelectorAll(".game-ball-wrapper")
+        );
 
-      // Filter only drawn balls (check if they have some indicator like 'is-drawn')
-      const balls = allBalls
-        .filter((el) => el.classList.contains("is-drawn"))
-        .map((el) => parseInt(el.textContent.trim(), 10))
-        .filter((n) => !isNaN(n));
+        const balls = allBalls
+          .filter((el) => el.classList.contains("is-drawn"))
+          .map((el) => parseInt(el.textContent.trim(), 10))
+          .filter((n) => !isNaN(n));
 
-      const drawText =
-        document.querySelector(".game-board-status-heading")?.textContent ||
-        document.querySelector(".game-number")?.textContent ||
-        "";
+        const drawText =
+          document.querySelector(".game-board-status-heading")?.textContent ||
+          document.querySelector(".game-number")?.textContent ||
+          "";
 
-      const dateText =
-        document.querySelector('input[data-id="check-results-date-input"]')
-          ?.value || "";
+        const dateText =
+          document.querySelector('input[data-id="check-results-date-input"]')
+            ?.value || "";
 
-      return {
-        draw: drawText.replace(/[^\d]/g, ""),
-        date: dateText.trim(),
-        numbers: balls,
-      };
+        return {
+          draw: drawText.replace(/[^\d]/g, ""),
+          date: dateText.trim(),
+          numbers: balls,
+        };
+      });
     });
 
-    // Filter numbers until first decrease
     data.numbers = filterIncreasingNumbers(data.numbers);
 
     const result = new KenoResult(data);
