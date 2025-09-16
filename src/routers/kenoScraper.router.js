@@ -1,10 +1,14 @@
 import express from "express";
-import { scrapeNSWKeno } from "../controllers/kenoScraper/kenoScraper.controller.js";
+import {
+  scrapeNSWKeno,
+  scrapeNSWKenobyGame,
+  getKenoResults,
+} from "../controllers/kenoScraper/kenoScraper.controller.js";
 
 const router = express.Router();
 
 // router.get("/nsw", scrapeAndParseNSWKeno);
-router.get("/api/keno/latest", async (req, res) => {
+router.get("/latest", async (req, res) => {
   try {
     const results = await scrapeNSWKeno();
     res.json(results);
@@ -12,5 +16,16 @@ router.get("/api/keno/latest", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+router.get("/latestbyGame", async (req, res) => {
+  try {
+    const results = await scrapeNSWKenobyGame();
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/keno-results", getKenoResults);
 
 export default router;

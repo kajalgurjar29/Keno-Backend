@@ -1,5 +1,6 @@
 import puppeteer from "puppeteer-core";
 import chromium from "chromium";
+import KenoResult from "../../models/kenoResult.model.js";
 
 // Scraper function
 export const scrapeNSWKeno = async () => {
@@ -79,5 +80,122 @@ export const scrapeNSWKeno = async () => {
     console.error("Scraping failed:", err.message);
     await browser.close();
     throw err;
+  }
+};
+
+// Helper to filter numbers until first decrease
+const filterIncreasingNumbers = (numbers) => {
+  const result = [];
+  for (let i = 0; i < numbers.length; i++) {
+    if (i === 0 || numbers[i] >= numbers[i - 1]) {
+      result.push(numbers[i]);
+    } else {
+      break; // Stop at first decrease
+    }
+  }
+  return result;
+};
+
+// Scraper function
+export const scrapeNSWKenobyGame = async () => {
+  const proxyHost = process.env.PROXY_HOST || "au.decodo.com";
+  const proxyPort = process.env.PROXY_PORT || "30001";
+  const proxyUser = process.env.PROXY_USER || "spr1wu95yq";
+  const proxyPass = process.env.PROXY_PASS || "w06feLHNn1Cma3=ioy";
+
+  const proxyUrl = `http://${proxyHost}:${proxyPort}`;
+
+  const args = [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    `--proxy-server=${proxyUrl}`,
+  ];
+
+  const executablePath = process.env.CHROMIUM_PATH || chromium.path;
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    executablePath,
+    args,
+  });
+
+  const page = await browser.newPage();
+
+  if (proxyUser && proxyPass) {
+    await page.authenticate({
+      username: proxyUser,
+      password: proxyPass,
+    });
+  }
+
+  try {
+    await page.goto("https://www.keno.com.au/check-results", {
+      waitUntil: "networkidle2",
+      timeout: 120000,
+    });
+
+    // Wait until any game ball appears (robust for class changes)
+    await page.waitForFunction(
+      () => document.querySelectorAll(".game-ball-wrapper").length > 0,
+      { timeout: 90000 }
+    );
+
+    const data = await page.evaluate(() => {
+      // Select all balls
+      const allBalls = Array.from(
+        document.querySelectorAll(".game-ball-wrapper")
+      );
+
+      // Filter only drawn balls (check if they have some indicator like 'is-drawn')
+      const balls = allBalls
+        .filter((el) => el.classList.contains("is-drawn"))
+        .map((el) => parseInt(el.textContent.trim(), 10))
+        .filter((n) => !isNaN(n));
+
+      const drawText =
+        document.querySelector(".game-board-status-heading")?.textContent ||
+        document.querySelector(".game-number")?.textContent ||
+        "";
+
+      const dateText =
+        document.querySelector('input[data-id="check-results-date-input"]')
+          ?.value || "";
+
+      return {
+        draw: drawText.replace(/[^\d]/g, ""),
+        date: dateText.trim(),
+        numbers: balls,
+      };
+    });
+
+    // Filter numbers until first decrease
+    data.numbers = filterIncreasingNumbers(data.numbers);
+
+    const result = new KenoResult(data);
+    await result.save();
+
+    console.log("Scraped data saved:", result);
+
+    await browser.close();
+    return data;
+  } catch (err) {
+    console.error("Scraping failed:", err.message);
+    await browser.close();
+    throw err;
+  }
+};
+
+export const getKenoResults = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10; 
+    const results = await KenoResult.find({})
+      .sort({ createdAt: -1 }) 
+      .limit(limit);
+
+    res.status(200).json({ success: true, results });
+  } catch (err) {
+    console.error("Failed to fetch Keno results:", err.message);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
