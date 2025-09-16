@@ -1,12 +1,12 @@
 import mongoose from "mongoose";
 
-const kenoResultSchema = new mongoose.Schema(
-  {
-    drawNumber: String,
-    numbers: String,
-    date: String,
-  },
-  { timestamps: true }
-);
+const KenoResultSchema = new mongoose.Schema({
+  draw: { type: String, required: true, unique: true },
+  date: { type: String, required: true },
+  numbers: [{ type: Number, required: true }],
+  createdAt: { type: Date, default: Date.now },
+});
 
-export default mongoose.model("KenoResult", kenoResultSchema);
+const KenoResult = mongoose.model("KenoResult", KenoResultSchema);
+
+export default KenoResult;

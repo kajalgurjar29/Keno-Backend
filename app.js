@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { connectDB } from "./src/db/db.config.js";
 import { createServer } from "http";
+import "./src/middleware/schedular.middleware.js";
 
 dotenv.config({ path: "./.env" });
 
