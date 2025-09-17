@@ -1,6 +1,10 @@
-import puppeteer from "puppeteer-core";
+// import puppeteer from "puppeteer-core";
+import puppeteer from "puppeteer-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import chromium from "chromium";
 import KenoResult from "../../models/kenoResult.model.js";
+
+puppeteer.use(StealthPlugin());
 
 // Scraper function
 export const scrapeNSWKeno = async () => {
@@ -88,13 +92,12 @@ const filterIncreasingNumbers = (numbers) => {
   for (let i = 0; i < numbers.length; i++) {
     if (i === 0 || numbers[i] >= numbers[i - 1]) {
       result.push(numbers[i]);
-    } else {
-      break;
-    }
+    } else break;
   }
   return result;
 };
 
+// ✅ Helper: retry logic
 const retry = async (fn, retries = 3, delay = 2000) => {
   let lastError;
   for (let i = 0; i < retries; i++) {
@@ -154,31 +157,35 @@ export const scrapeNSWKenobyGame = async () => {
       try {
         ({ browser, page } = await launchBrowser(true));
         await page.goto("https://www.keno.com.au/check-results", {
-          waitUntil: "networkidle2",
-          timeout: 120000,
+          waitUntil: "domcontentloaded", // ✅ faster + safer than networkidle2
+          timeout: 180000,
         });
       } catch (proxyErr) {
-        if (proxyErr.message.includes("ERR_TUNNEL_CONNECTION_FAILED")) {
+        if (
+          proxyErr.message.includes("ERR_TUNNEL_CONNECTION_FAILED") ||
+          proxyErr.message.includes("net::ERR_TIMED_OUT")
+        ) {
           console.warn("⚠️ Proxy failed, retrying without proxy...");
           if (browser) await browser.close();
           ({ browser, page } = await launchBrowser(false));
           await page.goto("https://www.keno.com.au/check-results", {
-            waitUntil: "networkidle2",
-            timeout: 120000,
+            waitUntil: "domcontentloaded",
+            timeout: 180000,
           });
-        } else {
-          throw proxyErr;
-        }
+        } else throw proxyErr;
       }
 
+      // ✅ More flexible selector
       await retry(() =>
-        page.waitForSelector(".game-ball-wrapper", { timeout: 60000 })
+        page.waitForSelector(".game-ball-wrapper, .keno-ball, .draw-result", {
+          timeout: 60000,
+        })
       );
 
       const data = await retry(async () => {
         return await page.evaluate(() => {
           const allBalls = Array.from(
-            document.querySelectorAll(".game-ball-wrapper")
+            document.querySelectorAll(".game-ball-wrapper, .keno-ball")
           );
           const balls = allBalls
             .filter((el) => el.classList.contains("is-drawn"))
@@ -211,20 +218,27 @@ export const scrapeNSWKenobyGame = async () => {
       } catch (dbErr) {
         if (dbErr.code === 11000) {
           console.warn(`⚠️ Duplicate draw skipped: ${data.draw}`);
-        } else {
-          throw dbErr;
-        }
+        } else throw dbErr;
       }
 
       await browser.close();
       return data;
     } catch (err) {
+      console.error("❌ Scraping failed:", err.message);
+      if (page) {
+        await page.screenshot({
+          path: `keno_error_${Date.now()}.png`,
+          fullPage: true,
+        });
+        const html = await page.content();
+        console.log("❌ HTML Snapshot:", html.substring(0, 500));
+      }
       if (browser) await browser.close();
       throw err;
     }
   };
 
-  // Outer retry: restart browser if frame/navigation fails
+  // Outer retry: restart browser if crash/navigation fail
   let attempt = 0;
   const maxAttempts = 3;
   while (attempt < maxAttempts) {
@@ -235,7 +249,7 @@ export const scrapeNSWKenobyGame = async () => {
     } catch (err) {
       console.error(`❌ Attempt ${attempt} failed:`, err.message);
       if (attempt >= maxAttempts) throw err;
-      await new Promise((res) => setTimeout(res, 5000)); // wait before retry
+      await new Promise((res) => setTimeout(res, 5000));
     }
   }
 };
@@ -253,4 +267,3 @@ export const getKenoResults = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
-  
