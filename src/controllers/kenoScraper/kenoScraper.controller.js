@@ -184,25 +184,43 @@ export const scrapeNSWKenobyGame = async () => {
   const runScraperOnce = async () => {
     let browser, page;
     try {
+      // always start fresh browser
       ({ browser, page } = await launchBrowser(true));
 
-      // safer navigation (shorter timeout, don't hang forever)
-      const response = await page.goto(targetUrl, {
-        waitUntil: "domcontentloaded",
-        timeout: 30000,
-      });
-
-      if (!response || !response.ok()) {
-        throw new Error(`Bad response: ${response?.status()}`);
+      // safer navigation with retry on detached frame
+      let navOk = false;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const response = await page.goto(targetUrl, {
+            waitUntil: "domcontentloaded",
+            timeout: 30000,
+          });
+          if (!response || !response.ok()) {
+            throw new Error(`Bad response: ${response?.status()}`);
+          }
+          navOk = true;
+          break;
+        } catch (err) {
+          if (/detached/i.test(err.message)) {
+            console.warn(
+              `⚠️ Navigation failed (detached frame) attempt ${attempt}`
+            );
+            await safeClose(browser); // kill bad browser
+            ({ browser, page } = await launchBrowser(true)); // relaunch fresh
+            continue;
+          }
+          throw err;
+        }
       }
+      if (!navOk) throw new Error("Navigation failed after retries");
 
-      // detect Akamai/Access Denied page
+      // check for Akamai block
       const bodyText = await page.evaluate(() => document.body.innerText);
       if (/Access Denied|blocked|verify/i.test(bodyText)) {
         throw new Error("Blocked by Akamai (Access Denied)");
       }
 
-      // wait for numbers – fail fast if DOM reloads
+      // wait for numbers
       await retry(() =>
         page.waitForSelector(
           ".game-ball-wrapper, .keno-ball, .draw-result, .game-board",
@@ -210,6 +228,7 @@ export const scrapeNSWKenobyGame = async () => {
         )
       );
 
+      // extract data
       const data = await page.evaluate(() => {
         const allBalls = Array.from(
           document.querySelectorAll(".game-ball-wrapper, .keno-ball")
@@ -236,7 +255,7 @@ export const scrapeNSWKenobyGame = async () => {
 
       data.numbers = filterIncreasingNumbers(data.numbers);
 
-      // save in DB
+      // save
       try {
         const result = new KenoResult(data);
         await result.save();
@@ -251,8 +270,6 @@ export const scrapeNSWKenobyGame = async () => {
       return data;
     } catch (err) {
       console.error("❌ runScraperOnce failed:", err.message);
-
-      // ensure browser is killed on crash
       await safeClose(browser);
       throw err;
     }
