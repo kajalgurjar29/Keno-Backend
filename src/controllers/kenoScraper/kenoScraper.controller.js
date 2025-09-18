@@ -185,15 +185,28 @@ export const scrapeNSWKenobyGame = async () => {
     let browser, page;
     try {
       ({ browser, page } = await launchBrowser(true));
-      await page.goto(targetUrl, {
-        waitUntil: "networkidle2", // important for Akamai
-        timeout: 60000,
+
+      // safer navigation (shorter timeout, don't hang forever)
+      const response = await page.goto(targetUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
       });
 
+      if (!response || !response.ok()) {
+        throw new Error(`Bad response: ${response?.status()}`);
+      }
+
+      // detect Akamai/Access Denied page
+      const bodyText = await page.evaluate(() => document.body.innerText);
+      if (/Access Denied|blocked|verify/i.test(bodyText)) {
+        throw new Error("Blocked by Akamai (Access Denied)");
+      }
+
+      // wait for numbers – fail fast if DOM reloads
       await retry(() =>
         page.waitForSelector(
           ".game-ball-wrapper, .keno-ball, .draw-result, .game-board",
-          { timeout: 20000 }
+          { timeout: 15000 }
         )
       );
 
@@ -223,6 +236,7 @@ export const scrapeNSWKenobyGame = async () => {
 
       data.numbers = filterIncreasingNumbers(data.numbers);
 
+      // save in DB
       try {
         const result = new KenoResult(data);
         await result.save();
@@ -237,6 +251,8 @@ export const scrapeNSWKenobyGame = async () => {
       return data;
     } catch (err) {
       console.error("❌ runScraperOnce failed:", err.message);
+
+      // ensure browser is killed on crash
       await safeClose(browser);
       throw err;
     }
