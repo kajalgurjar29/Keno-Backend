@@ -90,6 +90,7 @@ export const scrapeNSWKeno = async () => {
   }
 };
 
+// Filter numbers increasing
 const filterIncreasingNumbers = (numbers) => {
   const result = [];
   for (let i = 0; i < numbers.length; i++) {
@@ -128,7 +129,7 @@ const killZombieChromium = async () => {
   }
 };
 
-// Safe close
+// Safe close browser
 const safeClose = async (browser) => {
   if (!browser) return;
   try {
@@ -168,15 +169,12 @@ export const scrapeNSWKenobyGame = async () => {
       await page.authenticate({ username: proxyUser, password: proxyPass });
     }
 
-    // Fake headers to look like real Chrome
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
         "AppleWebKit/537.36 (KHTML, like Gecko) " +
         "Chrome/124.0.0.0 Safari/537.36"
     );
-    await page.setExtraHTTPHeaders({
-      "Accept-Language": "en-US,en;q=0.9",
-    });
+    await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
 
     return { browser, page };
   };
@@ -184,10 +182,9 @@ export const scrapeNSWKenobyGame = async () => {
   const runScraperOnce = async () => {
     let browser, page;
     try {
-      // always start fresh browser
       ({ browser, page } = await launchBrowser(true));
 
-      // safer navigation with retry on detached frame
+      // Navigation with retry for detached frame
       let navOk = false;
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
@@ -195,9 +192,8 @@ export const scrapeNSWKenobyGame = async () => {
             waitUntil: "domcontentloaded",
             timeout: 30000,
           });
-          if (!response || !response.ok()) {
+          if (!response || !response.ok())
             throw new Error(`Bad response: ${response?.status()}`);
-          }
           navOk = true;
           break;
         } catch (err) {
@@ -205,8 +201,8 @@ export const scrapeNSWKenobyGame = async () => {
             console.warn(
               `⚠️ Navigation failed (detached frame) attempt ${attempt}`
             );
-            await safeClose(browser); // kill bad browser
-            ({ browser, page } = await launchBrowser(true)); // relaunch fresh
+            await safeClose(browser);
+            ({ browser, page } = await launchBrowser(true));
             continue;
           }
           throw err;
@@ -214,13 +210,12 @@ export const scrapeNSWKenobyGame = async () => {
       }
       if (!navOk) throw new Error("Navigation failed after retries");
 
-      // check for Akamai block
+      // Akamai block check
       const bodyText = await page.evaluate(() => document.body.innerText);
-      if (/Access Denied|blocked|verify/i.test(bodyText)) {
+      if (/Access Denied|blocked|verify/i.test(bodyText))
         throw new Error("Blocked by Akamai (Access Denied)");
-      }
 
-      // wait for numbers
+      // Wait for numbers
       await retry(() =>
         page.waitForSelector(
           ".game-ball-wrapper, .keno-ball, .draw-result, .game-board",
@@ -228,7 +223,7 @@ export const scrapeNSWKenobyGame = async () => {
         )
       );
 
-      // extract data
+      // Extract data
       const data = await page.evaluate(() => {
         const allBalls = Array.from(
           document.querySelectorAll(".game-ball-wrapper, .keno-ball")
@@ -255,16 +250,16 @@ export const scrapeNSWKenobyGame = async () => {
 
       data.numbers = filterIncreasingNumbers(data.numbers);
 
-      // save
-      try {
-        const result = new KenoResult(data);
-        await result.save();
-        console.log("✅ Scraped data saved:", result);
-      } catch (dbErr) {
-        if (dbErr.code === 11000) {
-          console.warn(`⚠️ Duplicate draw skipped: ${data.draw}`);
-        } else throw dbErr;
-      }
+      // Save to DB with retry
+      await retry(
+        async () => {
+          const result = new KenoResult(data);
+          await result.save();
+          console.log("✅ Scraped data saved:", result);
+        },
+        3,
+        2000
+      );
 
       await safeClose(browser);
       return data;
@@ -275,18 +270,15 @@ export const scrapeNSWKenobyGame = async () => {
     }
   };
 
-  // outer retries
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      console.log(`🔄 Scraping attempt ${attempt}/3`);
-      return await runScraperOnce();
-    } catch (err) {
-      console.error(`❌ Attempt ${attempt} failed:`, err.message);
-      if (attempt === 3) throw err;
+  // Outer retry for full scraper
+  return await retry(
+    async () => {
       await killZombieChromium();
-      await new Promise((r) => setTimeout(r, 5000));
-    }
-  }
+      return await runScraperOnce();
+    },
+    3,
+    5000
+  );
 };
 
 export const getKenoResults = async (req, res) => {
