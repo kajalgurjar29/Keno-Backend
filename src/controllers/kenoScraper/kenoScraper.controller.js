@@ -90,8 +90,6 @@ export const scrapeNSWKeno = async () => {
   }
 };
 
-// Filter numbers increasing
-// Filter numbers increasing
 const filterIncreasingNumbers = (numbers) => {
   const result = [];
   for (let i = 0; i < numbers.length; i++) {
@@ -110,7 +108,7 @@ const retry = async (fn, retries = 3, delay = 2000) => {
       return await fn();
     } catch (err) {
       lastError = err;
-      console.warn(`[Retry ${i + 1}/${retries}] ${err.message}`);
+      console.warn(`Retry ${i + 1}/${retries} failed: ${err.message}`);
       if (i < retries - 1) await new Promise((r) => setTimeout(r, delay));
     }
   }
@@ -140,25 +138,13 @@ const safeClose = async (browser) => {
   }
 };
 
-// Hard timeout wrapper
-const runWithTimeout = async (fn, timeoutMs = 60000) => {
-  return await Promise.race([
-    fn(),
-    new Promise((_, reject) =>
-      setTimeout(
-        () => reject(new Error(`Scraper timed out after ${timeoutMs}ms`)),
-        timeoutMs
-      )
-    ),
-  ]);
-};
-
 export const scrapeNSWKenobyGame = async () => {
   const proxyHost = process.env.PROXY_HOST || "au.decodo.com";
   const proxyPort = process.env.PROXY_PORT || "30001";
   const proxyUser = process.env.PROXY_USER || "spr1wu95yq";
   const proxyPass = process.env.PROXY_PASS || "w06feLHNn1Cma3=ioy";
   const executablePath = process.env.CHROMIUM_PATH || chromium.path;
+
   const proxyUrl = `http://${proxyHost}:${proxyPort}`;
   const targetUrl = "https://www.keno.com.au/check-results";
 
@@ -175,6 +161,7 @@ export const scrapeNSWKenobyGame = async () => {
       executablePath,
       args,
     });
+
     const page = await browser.newPage();
 
     if (useProxy && proxyUser && proxyPass) {
@@ -187,20 +174,19 @@ export const scrapeNSWKenobyGame = async () => {
         "Chrome/124.0.0.0 Safari/537.36"
     );
     await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
+
     return { browser, page };
   };
 
   const runScraperOnce = async () => {
     let browser, page;
     try {
-      console.log("➡️ Launching browser...");
       ({ browser, page } = await launchBrowser(true));
 
       // Navigation with retry for detached frame
       let navOk = false;
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-          console.log(`➡️ Navigating to ${targetUrl}, attempt ${attempt}`);
           const response = await page.goto(targetUrl, {
             waitUntil: "domcontentloaded",
             timeout: 30000,
@@ -229,19 +215,14 @@ export const scrapeNSWKenobyGame = async () => {
         throw new Error("Blocked by Akamai (Access Denied)");
 
       // Wait for numbers
-      console.log("➡️ Waiting for game numbers...");
-      await retry(
-        () =>
-          page.waitForSelector(
-            ".game-ball-wrapper, .keno-ball, .draw-result, .game-board",
-            { timeout: 8000 }
-          ),
-        2,
-        1000
+      await retry(() =>
+        page.waitForSelector(
+          ".game-ball-wrapper, .keno-ball, .draw-result, .game-board",
+          { timeout: 15000 }
+        )
       );
 
       // Extract data
-      console.log("➡️ Extracting data...");
       const data = await page.evaluate(() => {
         const allBalls = Array.from(
           document.querySelectorAll(".game-ball-wrapper, .keno-ball")
@@ -268,8 +249,7 @@ export const scrapeNSWKenobyGame = async () => {
 
       data.numbers = filterIncreasingNumbers(data.numbers);
 
-      // Save to DB
-      console.log("➡️ Saving data to DB...");
+      // Save to DB with retry
       await retry(
         async () => {
           const result = new KenoResult(data);
@@ -289,11 +269,11 @@ export const scrapeNSWKenobyGame = async () => {
     }
   };
 
-  // Outer retry with hard timeout
+  // Outer retry for full scraper
   return await retry(
     async () => {
       await killZombieChromium();
-      return await runWithTimeout(runScraperOnce, 60000); // 60s max
+      return await runScraperOnce();
     },
     3,
     5000
