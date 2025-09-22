@@ -115,7 +115,6 @@ const retry = async (fn, retries = 3, delay = 2000) => {
   throw lastError;
 };
 
-// Kill leftover chrome
 const killZombieChromium = async () => {
   try {
     await execAsync("pkill -f chromium || pkill -f chrome");
