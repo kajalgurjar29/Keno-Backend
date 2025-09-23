@@ -40,7 +40,7 @@ import resetPasswordRoutes from "./src/routers/resetPassword.router.js";
 import profileManagementRoutes from "./src/routers/profileManagement.router.js";
 import ticketRoutes from "./src/routers/myticket.router.js";
 import combinationRoutes from "./src/routers/combination.router.js";
-import kenoRouter from "./src/routers/kenoScraper.router.js";
+import kenoRouter from "./src/routers/NSWkenoDrawNumberScraper.router.js";
 
 // API Routes
 app.use("/api/v1/users", userRoutes, forgotPasswordRoutes);

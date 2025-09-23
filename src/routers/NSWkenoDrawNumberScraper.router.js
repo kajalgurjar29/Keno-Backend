@@ -3,7 +3,7 @@ import {
   scrapeNSWKeno,
   scrapeNSWKenobyGame,
   getKenoResults,
-} from "../controllers/kenoScraper/kenoScraper.controller.js";
+} from "../controllers/kenoScraper/NSWkenoDrawNumberScraper.controller.js";
 
 const router = express.Router();
 
