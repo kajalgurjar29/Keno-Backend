@@ -2,7 +2,7 @@
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import chromium from "chromium";
-import KenoResult from "../../models/NSVkenoDrawResult.model.js";
+import KenoResult from "../../models/NSWkenoDrawResult.model.js";
 import util from "util";
 const execAsync = util.promisify(exec);
 import { exec } from "child_process";

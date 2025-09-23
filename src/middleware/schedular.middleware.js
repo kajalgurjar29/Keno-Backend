@@ -1,5 +1,5 @@
 import schedule from "node-schedule";
-import { scrapeNSWKenobyGame } from "../controllers/kenoScraper/kenoScraper.controller.js";
+import { scrapeNSWKenobyGame } from "../controllers/kenoScraper/NSWkenoDrawNumberScraper.controller.js";
 
 let running = false;
 schedule.scheduleJob("*/5 * * * * *", async () => {
