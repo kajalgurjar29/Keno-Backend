@@ -90,6 +90,7 @@ export const scrapeNSWKeno = async () => {
   }
 };
 
+// Filter to keep only increasing sequence
 const filterIncreasingNumbers = (numbers) => {
   const result = [];
   for (let i = 0; i < numbers.length; i++) {
@@ -115,6 +116,7 @@ const retry = async (fn, retries = 3, delay = 2000) => {
   throw lastError;
 };
 
+// Kill any existing Chromium/Chrome processes
 const killZombieChromium = async () => {
   try {
     await execAsync("pkill -f chromium || pkill -f chrome");
@@ -137,6 +139,7 @@ const safeClose = async (browser) => {
   }
 };
 
+// Main scraper function with retries and DB save
 export const scrapeNSWKenobyGame = async () => {
   const proxyHost = process.env.PROXY_HOST || "au.decodo.com";
   const proxyPort = process.env.PROXY_PORT || "30001";
@@ -279,6 +282,7 @@ export const scrapeNSWKenobyGame = async () => {
   );
 };
 
+// Fetch recent Keno results
 export const getKenoResults = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
@@ -289,6 +293,71 @@ export const getKenoResults = async (req, res) => {
     res.status(200).json({ success: true, results });
   } catch (err) {
     console.error("Failed to fetch Keno results:", err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Fetch filtered Keno results
+export const getFilteredKenoResults = async (req, res) => {
+  try {
+    const {
+      firstGameNumber,
+      lastGameNumber,
+      date, // single day YYYY-MM-DD
+      startDate, // range start YYYY-MM-DD
+      endDate, // range end YYYY-MM-DD
+      combination,
+      limit,
+    } = req.query;
+
+    const filter = {};
+
+    // Filter by draw number
+    if (firstGameNumber && lastGameNumber) {
+      filter.draw = {
+        $gte: String(firstGameNumber),
+        $lte: String(lastGameNumber),
+      };
+    } else if (firstGameNumber) {
+      filter.draw = { $gte: String(firstGameNumber) };
+    } else if (lastGameNumber) {
+      filter.draw = { $lte: String(lastGameNumber) };
+    }
+
+    // Filter by timestamp using createdAt
+    if (date) {
+      // Filter for the entire day
+      const start = new Date(date + "T00:00:00.000Z");
+      const end = new Date(date + "T23:59:59.999Z");
+      filter.createdAt = { $gte: start, $lte: end };
+    } else if (startDate && endDate) {
+      const start = new Date(startDate + "T00:00:00.000Z");
+      const end = new Date(endDate + "T23:59:59.999Z");
+      filter.createdAt = { $gte: start, $lte: end };
+    }
+
+    // Filter by drawn combination
+    if (combination) {
+      const numbers = combination
+        .split(",")
+        .map((num) => Number(num.trim()))
+        .filter((num) => !isNaN(num));
+
+      if (numbers.length > 0) {
+        filter.numbers = { $all: numbers };
+      }
+    }
+
+    // Debug: see filter object
+    console.log("🔹 Filter object:", filter);
+
+    const results = await KenoResult.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Number(limit) || 50);
+
+    res.status(200).json({ success: true, total: results.length, results });
+  } catch (err) {
+    console.error("❌ Failed to fetch filtered Keno results:", err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 };
