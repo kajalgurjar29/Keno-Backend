@@ -3,7 +3,9 @@ import {
   scrapeNSWKeno,
   scrapeNSWKenobyGame,
   getKenoResults,
+  getFilteredKenoResults,
 } from "../controllers/kenoScraper/NSWkenoDrawNumberScraper.controller.js";
+import verifyAPIKey from "../middleware/verifyAPIKey.js";
 
 const router = express.Router();
 
@@ -26,6 +28,7 @@ router.get("/latestbyGame", async (req, res) => {
   }
 });
 
-router.get("/keno-results", getKenoResults);
+router.get("/keno-results", verifyAPIKey, getKenoResults);
+router.get("/applyfilters", verifyAPIKey, getFilteredKenoResults);
 
 export default router;
