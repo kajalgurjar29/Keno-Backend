@@ -12,10 +12,10 @@ puppeteer.use(StealthPlugin());
 // Scraper function
 export const scrapeNSWKeno = async () => {
   // Load proxy details from env (set in your .env file)
-  const proxyHost = process.env.PROXY_HOST || "au.decodo.com";
-  const proxyPort = process.env.PROXY_PORT || "30001";
-  const proxyUser = process.env.PROXY_USER || "spr1wu95yq";
-  const proxyPass = process.env.PROXY_PASS || "w06feLHNn1Cma3=ioy";
+  const proxyHost = process.env.PROXY_HOST || "gw.dataimpulse.com";
+  const proxyPort = process.env.PROXY_PORT || "823";
+  const proxyUser = process.env.PROXY_USER || "a9357935f3ded2c2b707";
+  const proxyPass = process.env.PROXY_PASS || "c39b6f9adacd4155";
 
   const proxyUrl = `http://${proxyHost}:${proxyPort}`;
 
@@ -141,13 +141,14 @@ const safeClose = async (browser) => {
 
 // Main scraper function with retries and DB save
 export const scrapeNSWKenobyGame = async () => {
-  const proxyHost = process.env.PROXY_HOST || "au.decodo.com";
-  const proxyPort = process.env.PROXY_PORT || "30001";
-  const proxyUser = process.env.PROXY_USER || "spr1wu95yq";
-  const proxyPass = process.env.PROXY_PASS || "w06feLHNn1Cma3=ioy";
+  const proxyHost = process.env.PROXY_HOST || "gw.dataimpulse.com";
+  const proxyPort = process.env.PROXY_PORT || "823";
+  const proxyUser = process.env.PROXY_USER || "a9357935f3ded2c2b707";
+  const proxyPass = process.env.PROXY_PASS || "c39b6f9adacd4155";
   const executablePath = process.env.CHROMIUM_PATH || chromium.path;
 
   const proxyUrl = `http://${proxyHost}:${proxyPort}`;
+  
   const targetUrl = "https://www.keno.com.au/check-results";
 
   const launchBrowser = async (useProxy = true) => {
