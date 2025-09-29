@@ -1,7 +1,7 @@
 import ApiError from "../utils/ApiError.js";
 const verifyAPIKey = (req, res, next) => {
   const apiKey = req.header("api-key");
-  
+
   if (!apiKey) {
     return next(new ApiError(401, "API key is missing"));
   }
