@@ -2,15 +2,15 @@
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import chromium from "chromium";
-import KenoResult from "../../models/VICkenoDrawResult.model.js";
+import KenoResult from "../../models/NSWkenoDrawResult.model.js";
 import util from "util";
 const execAsync = util.promisify(exec);
 import { exec } from "child_process";
 
 puppeteer.use(StealthPlugin());
 
-// Scraper function
-export const scrapeVICKeno = async () => {
+// Scrape ATC Keno results
+export const scrapeATCKeno = async () => {
   // ✅ Proxy details
   const proxyHost = process.env.PROXY_HOST || "au.decodo.com";
   const proxyPort = process.env.PROXY_PORT || "30001";
@@ -138,8 +138,9 @@ const filterIncreasingNumbers = (numbers) => {
     } else break;
   }
   return result;
-};
+}; 
 
+// Retry wrapper
 const retry = async (fn, retries = 3, delay = 2000) => {
   let lastError;
   for (let i = 0; i < retries; i++) {
@@ -154,18 +155,20 @@ const retry = async (fn, retries = 3, delay = 2000) => {
   throw lastError;
 };
 
+// Kill any existing Chromium/Chrome processes
 const killZombieChromium = async () => {
   try {
-    await execPromise("pkill -f chromium || pkill -f chrome");
+    await execAsync("pkill -f chromium || pkill -f chrome");
   } catch {
     try {
-      await execPromise(
+      await execAsync(
         "taskkill /F /IM chrome.exe /T || taskkill /F /IM chromium.exe /T"
       );
     } catch (_) {}
   }
 };
 
+// Safe close browser
 const safeClose = async (browser) => {
   if (!browser) return;
   try {
@@ -175,7 +178,8 @@ const safeClose = async (browser) => {
   }
 };
 
-export const scrapeVICKenoByGame = async () => {
+// Main scraper function with retries and DB save
+export const scrapeNSWKenobyGame = async () => {
   const proxyHost = process.env.PROXY_HOST || "au.decodo.com";
   const proxyPort = process.env.PROXY_PORT || "30001";
   const proxyUser = process.env.PROXY_USER || "spr1wu95yq";
@@ -185,13 +189,13 @@ export const scrapeVICKenoByGame = async () => {
   const proxyUrl = `http://${proxyHost}:${proxyPort}`;
   const targetUrl = "https://www.keno.com.au/check-results";
 
-  const launchBrowser = async () => {
+  const launchBrowser = async (useProxy = true) => {
     const args = [
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
-      `--proxy-server=${proxyUrl}`,
     ];
+    if (useProxy) args.push(`--proxy-server=${proxyUrl}`);
 
     const browser = await puppeteer.launch({
       headless: true,
@@ -200,7 +204,10 @@ export const scrapeVICKenoByGame = async () => {
     });
 
     const page = await browser.newPage();
-    await page.authenticate({ username: proxyUser, password: proxyPass });
+
+    if (useProxy && proxyUser && proxyPass) {
+      await page.authenticate({ username: proxyUser, password: proxyPass });
+    }
 
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
@@ -215,33 +222,53 @@ export const scrapeVICKenoByGame = async () => {
   const runScraperOnce = async () => {
     let browser, page;
     try {
-      ({ browser, page } = await launchBrowser());
+      ({ browser, page } = await launchBrowser(true));
 
-      const response = await page.goto(targetUrl, {
-        waitUntil: "domcontentloaded",
-        timeout: 30000,
-      });
-      if (!response || !response.ok())
-        throw new Error(`Bad response: ${response?.status()}`);
-
-      // ✅ Check for Akamai block
-      const bodyText = await page.evaluate(() => document.body.innerText);
-      if (/Access Denied|blocked|verify/i.test(bodyText)) {
-        throw new Error("Blocked by Akamai (Access Denied)");
+      // Navigation with retry for detached frame
+      let navOk = false;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const response = await page.goto(targetUrl, {
+            waitUntil: "domcontentloaded",
+            timeout: 30000,
+          });
+          if (!response || !response.ok())
+            throw new Error(`Bad response: ${response?.status()}`);
+          navOk = true;
+          break;
+        } catch (err) {
+          if (/detached/i.test(err.message)) {
+            console.warn(
+              `⚠️ Navigation failed (detached frame) attempt ${attempt}`
+            );
+            await safeClose(browser);
+            ({ browser, page } = await launchBrowser(true));
+            continue;
+          }
+          throw err;
+        }
       }
+      if (!navOk) throw new Error("Navigation failed after retries");
 
-      // ✅ Wait for results
+      // Akamai block check
+      const bodyText = await page.evaluate(() => document.body.innerText);
+      if (/Access Denied|blocked|verify/i.test(bodyText))
+        throw new Error("Blocked by Akamai (Access Denied)");
+
+      // Wait for numbers
       await retry(() =>
-        page.waitForSelector(".game-ball-wrapper, .keno-ball", {
-          timeout: 15000,
-        })
+        page.waitForSelector(
+          ".game-ball-wrapper, .keno-ball, .draw-result, .game-board",
+          { timeout: 15000 }
+        )
       );
 
-      // ✅ Extract draw data
+      // Extract data
       const data = await page.evaluate(() => {
-        const balls = Array.from(
+        const allBalls = Array.from(
           document.querySelectorAll(".game-ball-wrapper, .keno-ball")
-        )
+        );
+        const balls = allBalls
           .map((el) => parseInt(el.textContent.trim(), 10))
           .filter((n) => !isNaN(n));
 
@@ -263,12 +290,16 @@ export const scrapeVICKenoByGame = async () => {
 
       data.numbers = filterIncreasingNumbers(data.numbers);
 
-      // ✅ Save to DB
-      await retry(async () => {
-        const result = new KenoResult(data);
-        await result.save();
-        console.log("✅ VIC data saved:", result);
-      });
+      // Save to DB with retry
+      await retry(
+        async () => {
+          const result = new KenoResult(data);
+          await result.save();
+          console.log("✅ Scraped data saved:", result);
+        },
+        3,
+        2000
+      );
 
       await safeClose(browser);
       return data;
@@ -279,14 +310,19 @@ export const scrapeVICKenoByGame = async () => {
     }
   };
 
-  return await retry(async () => {
-    await killZombieChromium();
-    return await runScraperOnce();
-  });
+  // Outer retry for full scraper
+  return await retry(
+    async () => {
+      await killZombieChromium();
+      return await runScraperOnce();
+    },
+    3,
+    5000
+  );
 };
 
 // Fetch recent Keno results
-export const getKenoResultsVic = async (req, res) => {
+export const getKenoResults = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
     const results = await KenoResult.find({})
@@ -301,7 +337,7 @@ export const getKenoResultsVic = async (req, res) => {
 };
 
 // Fetch filtered Keno results and pagination
-export const getFilteredKenoResultsVic = async (req, res) => {
+export const getFilteredKenoResults = async (req, res) => {
   try {
     const {
       firstGameNumber,

@@ -7,6 +7,6 @@ const KenoResultSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
-const KenoResult = mongoose.model("NicDrawNumber", KenoResultSchema);
+const KenoResult = mongoose.model("VICDrawNumber", KenoResultSchema);
 
 export default KenoResult;

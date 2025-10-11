@@ -42,6 +42,7 @@ import ticketRoutes from "./src/routers/myticket.router.js";
 import combinationRoutes from "./src/routers/combination.router.js";
 import NSWkenoRouter from "./src/routers/NSWkenoDrawNumberScraper.router.js";
 import VICkenoRouter from "./src/routers/VICkenoDrawNumberScraper.router.js";
+import ATCkenoRouter from "./src/routers/ATCkenoDrawNumberScraper.router.js";
 
 // API Routes
 app.use("/api/v1/users", userRoutes, forgotPasswordRoutes);
@@ -52,6 +53,7 @@ app.use("/api/v1/tickets", ticketRoutes);
 app.use("/api/v1/combinations", combinationRoutes);
 app.use("/api/v1/nsw-keno", NSWkenoRouter);
 app.use("/api/v1/vic-keno", VICkenoRouter);
+app.use("/api/v1/atc-keno", ATCkenoRouter);
 
 if (!process.env.PORT) {
   console.error("Missing environment variables! Check .env file.");
