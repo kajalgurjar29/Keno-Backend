@@ -14,8 +14,8 @@ export const scrapeNSWKeno = async () => {
   // Load proxy details from env (set in your .env file)
   const proxyHost = process.env.PROXY_HOST || "gw.dataimpulse.com";
   const proxyPort = process.env.PROXY_PORT || "823";
-  const proxyUser = process.env.PROXY_USER || "a9357935f3ded2c2b707";
-  const proxyPass = process.env.PROXY_PASS || "c39b6f9adacd4155";
+  const proxyUser = process.env.PROXY_USER_NSW || "a9357935f3ded2c2b707";
+  const proxyPass = process.env.PROXY_PASS_NSW || "c39b6f9adacd4155";
 
   const proxyUrl = `http://${proxyHost}:${proxyPort}`;
 
@@ -143,12 +143,12 @@ const safeClose = async (browser) => {
 export const scrapeNSWKenobyGame = async () => {
   const proxyHost = process.env.PROXY_HOST || "gw.dataimpulse.com";
   const proxyPort = process.env.PROXY_PORT || "823";
-  const proxyUser = process.env.PROXY_USER || "a9357935f3ded2c2b707";
-  const proxyPass = process.env.PROXY_PASS || "c39b6f9adacd4155";
+  const proxyUser = process.env.PROXY_USER_NSW || "a9357935f3ded2c2b707";
+  const proxyPass = process.env.PROXY_PASS_NSW || "c39b6f9adacd4155";
   const executablePath = process.env.CHROMIUM_PATH || chromium.path;
 
   const proxyUrl = `http://${proxyHost}:${proxyPort}`;
-  
+
   const targetUrl = "https://www.keno.com.au/check-results";
 
   const launchBrowser = async (useProxy = true) => {

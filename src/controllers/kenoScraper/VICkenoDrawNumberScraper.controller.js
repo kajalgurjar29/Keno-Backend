@@ -14,8 +14,8 @@ export const scrapeVICKeno = async () => {
   // ✅ Proxy details
   const proxyHost = process.env.PROXY_HOST || "au.decodo.com";
   const proxyPort = process.env.PROXY_PORT || "30001";
-  const proxyUser = process.env.PROXY_USER || "spr1wu95yq";
-  const proxyPass = process.env.PROXY_PASS || "w06feLHNn1Cma3=ioy";
+  const proxyUser = process.env.PROXY_USER_VIC || "spr1wu95yq";
+  const proxyPass = process.env.PROXY_PASS_VIC || "w06feLHNn1Cma3=ioy";
 
   const proxyUrl = `http://${proxyHost}:${proxyPort}`;
   const args = [
@@ -178,8 +178,8 @@ const safeClose = async (browser) => {
 export const scrapeVICKenoByGame = async () => {
   const proxyHost = process.env.PROXY_HOST || "au.decodo.com";
   const proxyPort = process.env.PROXY_PORT || "30001";
-  const proxyUser = process.env.PROXY_USER || "spr1wu95yq";
-  const proxyPass = process.env.PROXY_PASS || "w06feLHNn1Cma3=ioy";
+  const proxyUser = process.env.PROXY_USER_VIC || "spr1wu95yq";
+  const proxyPass = process.env.PROXY_PASS_VIC || "w06feLHNn1Cma3=ioy";
   const executablePath = process.env.CHROMIUM_PATH || chromium.path;
 
   const proxyUrl = `http://${proxyHost}:${proxyPort}`;
