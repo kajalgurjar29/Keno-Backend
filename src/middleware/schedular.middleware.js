@@ -53,10 +53,67 @@
 //   runningVIC = false;
 // });
 
+// import schedule from "node-schedule";
+// import { scrapeNSWKenobyGame } from "../controllers/kenoScraper/NSWkenoDrawNumberScraper.controller.js";
+// import { scrapeVICKenoByGame } from "../controllers/kenoScraper/VICkenoDrawNumberScraper.controller.js";
+// import { scrapeACTKenoByGame } from "../controllers/kenoScraper/ACTkenoDrawNumberScraper.controller.js";
+
+// // 🟢 NSW Scraper Scheduler (every 1 minute)
+// let runningNSW = false;
+// schedule.scheduleJob("*/1 * * * *", async () => {
+//   if (runningNSW) return;
+//   runningNSW = true;
+//   console.log("🕐 NSW Job triggered at", new Date().toLocaleString());
+
+//   try {
+//     const result = await scrapeNSWKenobyGame();
+//     console.log("✅ NSW Scraped and saved:", result);
+//   } catch (err) {
+//     console.error("❌ NSW Scraper error:", err.message);
+//   }
+
+//   runningNSW = false;
+// });
+
+// // 🟢 VIC Scraper Scheduler (every 2 minutes)
+// let runningVIC = false;
+// schedule.scheduleJob("*/2 * * * *", async () => {
+//   if (runningVIC) return;
+//   runningVIC = true;
+//   console.log("🕐 VIC Job triggered at", new Date().toLocaleString());
+
+//   try {
+//     const result = await scrapeVICKenoByGame();
+//     console.log("✅ VIC Scraped and saved:", result);
+//   } catch (err) {
+//     console.error("❌ VIC Scraper error:", err.message);
+//   }
+
+//   runningVIC = false;
+// });
+
+// // 🟢 ACT Scraper Scheduler (every 3 minutes)
+// let runningACT = false;
+// schedule.scheduleJob("*/3 * * * *", async () => {
+//   if (runningACT) return;
+//   runningACT = true;
+//   console.log("🕐 ACT Job triggered at", new Date().toLocaleString());
+
+//   try {
+//     const result = await scrapeACTKenoByGame();
+//     console.log("✅ ACT Scraped and saved:", result);
+//   } catch (err) {
+//     console.error("❌ ACT Scraper error:", err.message);
+//   }
+
+//   runningACT = false;
+// });
+
 import schedule from "node-schedule";
 import { scrapeNSWKenobyGame } from "../controllers/kenoScraper/NSWkenoDrawNumberScraper.controller.js";
 import { scrapeVICKenoByGame } from "../controllers/kenoScraper/VICkenoDrawNumberScraper.controller.js";
 import { scrapeACTKenoByGame } from "../controllers/kenoScraper/ACTkenoDrawNumberScraper.controller.js";
+import { scrapeSAKenoByGame } from "../controllers/kenoScraper/SAkenoDrawNumberScraper.controller.js";
 
 // 🟢 NSW Scraper Scheduler (every 1 minute)
 let runningNSW = false;
@@ -108,3 +165,21 @@ schedule.scheduleJob("*/3 * * * *", async () => {
 
   runningACT = false;
 });
+
+// 🟢 SA Scraper Scheduler (every 4 minutes)
+let runningSA = false;
+schedule.scheduleJob("*/4 * * * *", async () => {
+  if (runningSA) return;
+  runningSA = true;
+  console.log("🕐 SA Job triggered at", new Date().toLocaleString());
+
+  try {
+    const result = await scrapeSAKenoByGame();
+    console.log("✅ SA Scraped and saved:", result);
+  } catch (err) {
+    console.error("❌ SA Scraper error:", err.message);
+  }
+
+  runningSA = false;
+});
+
