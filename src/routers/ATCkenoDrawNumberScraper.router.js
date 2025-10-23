@@ -2,8 +2,8 @@ import express from "express";
 import {
   scrapeATCKeno,
   scrapeACTKenoByGame,
-  getKenoResults,
-  getFilteredKenoResults,
+  getKenoResultsAtc,
+  getFilteredKenoResultsAtc,
 } from "../controllers/kenoScraper/ACTkenoDrawNumberScraper.controller.js";
 import verifyAPIKey from "../middleware/verifyAPIKey.js";
 
@@ -37,7 +37,7 @@ router.get("/latestbyGame", async (req, res) => {
   }
 });
 
-router.get("/keno-results", verifyAPIKey, getKenoResults);
-router.get("/applyfilters", verifyAPIKey, getFilteredKenoResults);
+router.get("/keno-results", verifyAPIKey, getKenoResultsAtc);
+router.get("/applyfilters", verifyAPIKey, getFilteredKenoResultsAtc);
 
 export default router;

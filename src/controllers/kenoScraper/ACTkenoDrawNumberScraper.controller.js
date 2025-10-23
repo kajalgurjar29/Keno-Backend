@@ -308,7 +308,7 @@ export const scrapeACTKenoByGame = async () => {
 };
 
 // Fetch recent Keno results
-export const getKenoResultsVic = async (req, res) => {
+export const getKenoResultsAtc = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
     const results = await KenoResult.find({})
@@ -323,7 +323,7 @@ export const getKenoResultsVic = async (req, res) => {
 };
 
 // Fetch filtered Keno results and pagination
-export const getFilteredKenoResultsVic = async (req, res) => {
+export const getFilteredKenoResultsAtc = async (req, res) => {
   try {
     const {
       firstGameNumber,
@@ -399,94 +399,94 @@ export const getFilteredKenoResultsVic = async (req, res) => {
   }
 };
 
-// Fetch recent Keno results
-export const getKenoResults = async (req, res) => {
-  try {
-    const limit = parseInt(req.query.limit) || 10;
-    const results = await KenoResult.find({})
-      .sort({ createdAt: -1 })
-      .limit(limit);
+// // Fetch recent Keno results
+// export const getKenoResults = async (req, res) => {
+//   try {
+//     const limit = parseInt(req.query.limit) || 10;
+//     const results = await KenoResult.find({})
+//       .sort({ createdAt: -1 })
+//       .limit(limit);
 
-    res.status(200).json({ success: true, results });
-  } catch (err) {
-    console.error("Failed to fetch Keno results:", err.message);
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
+//     res.status(200).json({ success: true, results });
+//   } catch (err) {
+//     console.error("Failed to fetch Keno results:", err.message);
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// };
 
-// Fetch filtered Keno results and pagination
-export const getFilteredKenoResults = async (req, res) => {
-  try {
-    const {
-      firstGameNumber,
-      lastGameNumber,
-      date, // single day YYYY-MM-DD
-      startDate, // range start YYYY-MM-DD
-      endDate, // range end YYYY-MM-DD
-      combination,
-      limit = 50, // default limit
-      page = 1, // default page
-    } = req.query;
+// // Fetch filtered Keno results and pagination
+// export const getFilteredKenoResults = async (req, res) => {
+//   try {
+//     const {
+//       firstGameNumber,
+//       lastGameNumber,
+//       date, // single day YYYY-MM-DD
+//       startDate, // range start YYYY-MM-DD
+//       endDate, // range end YYYY-MM-DD
+//       combination,
+//       limit = 50, // default limit
+//       page = 1, // default page
+//     } = req.query;
 
-    const filter = {};
+//     const filter = {};
 
-    // Filter by draw number
-    if (firstGameNumber && lastGameNumber) {
-      filter.draw = {
-        $gte: String(firstGameNumber),
-        $lte: String(lastGameNumber),
-      };
-    } else if (firstGameNumber) {
-      filter.draw = { $gte: String(firstGameNumber) };
-    } else if (lastGameNumber) {
-      filter.draw = { $lte: String(lastGameNumber) };
-    }
+//     // Filter by draw number
+//     if (firstGameNumber && lastGameNumber) {
+//       filter.draw = {
+//         $gte: String(firstGameNumber),
+//         $lte: String(lastGameNumber),
+//       };
+//     } else if (firstGameNumber) {
+//       filter.draw = { $gte: String(firstGameNumber) };
+//     } else if (lastGameNumber) {
+//       filter.draw = { $lte: String(lastGameNumber) };
+//     }
 
-    // Filter by timestamp using createdAt
-    if (date) {
-      const start = new Date(date + "T00:00:00.000Z");
-      const end = new Date(date + "T23:59:59.999Z");
-      filter.createdAt = { $gte: start, $lte: end };
-    } else if (startDate && endDate) {
-      const start = new Date(startDate + "T00:00:00.000Z");
-      const end = new Date(endDate + "T23:59:59.999Z");
-      filter.createdAt = { $gte: start, $lte: end };
-    }
+//     // Filter by timestamp using createdAt
+//     if (date) {
+//       const start = new Date(date + "T00:00:00.000Z");
+//       const end = new Date(date + "T23:59:59.999Z");
+//       filter.createdAt = { $gte: start, $lte: end };
+//     } else if (startDate && endDate) {
+//       const start = new Date(startDate + "T00:00:00.000Z");
+//       const end = new Date(endDate + "T23:59:59.999Z");
+//       filter.createdAt = { $gte: start, $lte: end };
+//     }
 
-    // Filter by drawn combination
-    if (combination) {
-      const numbers = combination
-        .split(",")
-        .map((num) => Number(num.trim()))
-        .filter((num) => !isNaN(num));
-      if (numbers.length > 0) filter.numbers = { $all: numbers };
-    }
+//     // Filter by drawn combination
+//     if (combination) {
+//       const numbers = combination
+//         .split(",")
+//         .map((num) => Number(num.trim()))
+//         .filter((num) => !isNaN(num));
+//       if (numbers.length > 0) filter.numbers = { $all: numbers };
+//     }
 
-    // Convert page and limit to numbers
-    const limitNum = Number(limit);
-    const pageNum = Number(page);
-    const skip = (pageNum - 1) * limitNum;
+//     // Convert page and limit to numbers
+//     const limitNum = Number(limit);
+//     const pageNum = Number(page);
+//     const skip = (pageNum - 1) * limitNum;
 
-    // Debug: see filter object
-    console.log("🔹 Filter object:", filter, "Skip:", skip, "Limit:", limitNum);
+//     // Debug: see filter object
+//     console.log("🔹 Filter object:", filter, "Skip:", skip, "Limit:", limitNum);
 
-    // Get total count for pagination info
-    const totalResults = await KenoResult.countDocuments(filter);
+//     // Get total count for pagination info
+//     const totalResults = await KenoResult.countDocuments(filter);
 
-    const results = await KenoResult.find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limitNum);
+//     const results = await KenoResult.find(filter)
+//       .sort({ createdAt: -1 })
+//       .skip(skip)
+//       .limit(limitNum);
 
-    res.status(200).json({
-      success: true,
-      total: totalResults,
-      page: pageNum,
-      limit: limitNum,
-      results,
-    });
-  } catch (err) {
-    console.error("❌ Failed to fetch filtered Keno results:", err.message);
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
+//     res.status(200).json({
+//       success: true,
+//       total: totalResults,
+//       page: pageNum,
+//       limit: limitNum,
+//       results,
+//     });
+//   } catch (err) {
+//     console.error("❌ Failed to fetch filtered Keno results:", err.message);
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// };
