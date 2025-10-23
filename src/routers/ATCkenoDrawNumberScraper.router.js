@@ -15,7 +15,7 @@ router.get("/atc-latest", async (req, res) => {
     const data = await scrapeATCKeno();
     res.status(200).json({
       success: true,
-      message: "VIC Keno results scraped successfully",
+      message: "ATC Keno results scraped successfully",
       data,
     });
   } catch (error) {
