@@ -1,14 +1,8 @@
-// routes/combination.routes.js
 import express from "express";
-import {
-  generateCombinations,
-  getCombinations,
-} from "../controllers/ExoticPredictor/Combination.controller.js";
-import verifyAPIKey from "../middleware/verifyAPIKey.js";
+import { generateExoticPredictions } from "../controllers/ExoticPredictor/Combination.controller.js";
 
 const router = express.Router();
 
-router.post("/generate", verifyAPIKey, generateCombinations);
-router.get("/get", verifyAPIKey, getCombinations);
+router.post("/data", generateExoticPredictions); // GET /api/exotic/data?location=VIC&date=2025-10-15
 
 export default router;
