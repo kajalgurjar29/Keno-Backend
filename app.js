@@ -44,6 +44,7 @@ import NSWkenoRouter from "./src/routers/NSWkenoDrawNumberScraper.router.js";
 import VICkenoRouter from "./src/routers/VICkenoDrawNumberScraper.router.js";
 import ATCkenoRouter from "./src/routers/ATCkenoDrawNumberScraper.router.js";
 import SAkenoRouter from "./src/routers/SAkenoDrawNumberScraper.router.js";
+import OverDueComboRouter from "./src/routers/OverdueCombos.router.js";
 
 // API Routes
 app.use("/api/v1/users", userRoutes, forgotPasswordRoutes);
@@ -56,6 +57,7 @@ app.use("/api/v1/nsw-keno", NSWkenoRouter);
 app.use("/api/v1/vic-keno", VICkenoRouter);
 app.use("/api/v1/atc-keno", ATCkenoRouter);
 app.use("/api/v1/sa-keno", SAkenoRouter);
+app.use("/api/v1/over-due-combo", OverDueComboRouter);
 
 if (!process.env.PORT) {
   console.error("Missing environment variables! Check .env file.");
