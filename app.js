@@ -47,8 +47,8 @@ import SAkenoRouter from "./src/routers/SAkenoDrawNumberScraper.router.js";
 import OverDueComboRouter from "./src/routers/OverdueCombos.router.js";
 
 // API Routes
-app.use("/api/v1/users", userRoutes, forgotPasswordRoutes);
-// app.use("/api/v1/forgot-password", forgotPasswordRoutes);
+app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/users", forgotPasswordRoutes);
 app.use("/api/v1/reset-password", resetPasswordRoutes);
 app.use("/api/v1/profile", profileManagementRoutes);
 app.use("/api/v1/tickets", ticketRoutes);
@@ -65,8 +65,24 @@ if (!process.env.PORT) {
 }
 
 const PORT = process.env.PORT || 3000;
+
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`❌ Port ${PORT} is already in use. Please:`);
+    console.error(`   1. Stop the existing process using port ${PORT}`);
+    console.error(`   2. Or change the PORT in your .env file`);
+    console.error(
+      `   3. On Windows, run: netstat -ano | findstr :${PORT} to find the process`
+    );
+    process.exit(1);
+  } else {
+    console.error("❌ Server error:", err);
+    process.exit(1);
+  }
+});
+
 server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`✅ Server is running on port ${PORT}`);
 });
 
 export { app };

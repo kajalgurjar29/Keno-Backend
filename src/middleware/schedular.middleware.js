@@ -152,7 +152,10 @@ schedule.scheduleJob("*/2 * * * *", async () => {
 // 🟢 ACT Scraper Scheduler (every 3 minutes)
 let runningACT = false;
 schedule.scheduleJob("*/3 * * * *", async () => {
-  if (runningACT) return;
+  if (runningACT) {
+    console.log("⏸️ ACT Scraper already running, skipping...");
+    return;
+  }
   runningACT = true;
   console.log("🕐 ACT Job triggered at", new Date().toLocaleString());
 
@@ -160,10 +163,17 @@ schedule.scheduleJob("*/3 * * * *", async () => {
     const result = await scrapeACTKenoByGame();
     console.log("✅ ACT Scraped and saved:", result);
   } catch (err) {
+    // Log error but don't crash the server
     console.error("❌ ACT Scraper error:", err.message);
+    // Only log first few lines of stack trace to avoid clutter
+    if (err.stack && err.message.includes("Target closed")) {
+      console.error(
+        "   (This is a known Puppeteer issue - browser connection lost)"
+      );
+    }
+  } finally {
+    runningACT = false;
   }
-
-  runningACT = false;
 });
 
 // 🟢 SA Scraper Scheduler (every 4 minutes)
@@ -182,4 +192,3 @@ schedule.scheduleJob("*/4 * * * *", async () => {
 
   runningSA = false;
 });
-
