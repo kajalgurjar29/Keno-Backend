@@ -45,6 +45,7 @@ import VICkenoRouter from "./src/routers/VICkenoDrawNumberScraper.router.js";
 import ATCkenoRouter from "./src/routers/ATCkenoDrawNumberScraper.router.js";
 import SAkenoRouter from "./src/routers/SAkenoDrawNumberScraper.router.js";
 import OverDueComboRouter from "./src/routers/OverdueCombos.router.js";
+import historicalFrequencyRouter from "./src/routers/historicalFrequency.router.js";
 
 // API Routes
 app.use("/api/v1/users", userRoutes);
@@ -58,6 +59,7 @@ app.use("/api/v1/vic-keno", VICkenoRouter);
 app.use("/api/v1/atc-keno", ATCkenoRouter);
 app.use("/api/v1/sa-keno", SAkenoRouter);
 app.use("/api/v1/over-due-combo", OverDueComboRouter);
+app.use("/api/v1/historical-frequency", historicalFrequencyRouter);
 
 if (!process.env.PORT) {
   console.error("Missing environment variables! Check .env file.");
