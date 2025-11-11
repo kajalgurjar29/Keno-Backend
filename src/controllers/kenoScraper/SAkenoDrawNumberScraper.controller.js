@@ -286,11 +286,18 @@ export const scrapeSAKenoByGame = async () => {
 
       data.numbers = filterIncreasingNumbers(data.numbers);
 
-      // Save to DB
+      // Save to DB with idempotent upsert (avoid E11000 duplicate key errors)
       await retry(async () => {
-        const result = new KenoResult(data);
-        await result.save();
-        console.log("✅ SA data saved:", result);
+        const upsertRes = await KenoResult.updateOne(
+          { draw: String(data.draw) },
+          { $setOnInsert: data },
+          { upsert: true }
+        );
+        if (upsertRes.upsertedCount && upsertRes.upsertedCount > 0) {
+          console.log("✅ SA data inserted:", data.draw);
+        } else {
+          console.log("ℹ️  SA draw already exists, skipped insert:", data.draw);
+        }
       });
 
       await safeClose(browser);

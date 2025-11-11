@@ -252,12 +252,22 @@ export const scrapeNSWKenobyGame = async () => {
 
       data.numbers = filterIncreasingNumbers(data.numbers);
 
-      // Save to DB with retry
+      // Save to DB with idempotent upsert to avoid E11000 duplicate errors
       await retry(
         async () => {
-          const result = new KenoResult(data);
-          await result.save();
-          console.log("✅ Scraped data saved:", result);
+          const upsertRes = await KenoResult.updateOne(
+            { draw: String(data.draw) },
+            { $setOnInsert: data },
+            { upsert: true }
+          );
+          if (upsertRes.upsertedCount && upsertRes.upsertedCount > 0) {
+            console.log("✅ NSW data inserted:", data.draw);
+          } else {
+            console.log(
+              "ℹ️  NSW draw already exists, skipped insert:",
+              data.draw
+            );
+          }
         },
         3,
         2000
