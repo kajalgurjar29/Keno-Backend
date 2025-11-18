@@ -79,7 +79,7 @@ function getCombinations(arr, size) {
   }
   helper(0, []);
   return result;
-};
+}
 
 export const getOverdueCombospagination = async (req, res) => {
   try {
