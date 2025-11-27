@@ -46,6 +46,9 @@ import ATCkenoRouter from "./src/routers/ATCkenoDrawNumberScraper.router.js";
 import SAkenoRouter from "./src/routers/SAkenoDrawNumberScraper.router.js";
 import OverDueComboRouter from "./src/routers/OverdueCombos.router.js";
 import historicalFrequencyRouter from "./src/routers/historicalFrequency.router.js";
+import NSWTrackSideRouter from "./src/routers/NSWTrackSideScraper.router.js";
+import VICTrackSideRouter from "./src/routers/VICTrackSideScraper.router.js";
+import ATCTrackSideRouter from "./src/routers/ATCTrackSideScraper.router.js";
 
 // API Routes
 app.use("/api/v1/users", userRoutes);
@@ -60,6 +63,9 @@ app.use("/api/v1/atc-keno", ATCkenoRouter);
 app.use("/api/v1/sa-keno", SAkenoRouter);
 app.use("/api/v1/over-due-combo", OverDueComboRouter);
 app.use("/api/v1/historical-frequency", historicalFrequencyRouter);
+app.use("/api/v1/nsw-trackside", NSWTrackSideRouter);
+app.use("/api/v1/vic-trackside", VICTrackSideRouter);
+app.use("/api/v1/atc-trackside", ATCTrackSideRouter);
 
 if (!process.env.PORT) {
   console.error("Missing environment variables! Check .env file.");
