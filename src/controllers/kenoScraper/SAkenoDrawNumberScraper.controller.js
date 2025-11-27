@@ -7,7 +7,12 @@ import util from "util";
 const execAsync = util.promisify(exec);
 import { exec } from "child_process";
 
-puppeteer.use(StealthPlugin());
+// ✅ Use stealth plugin but disable problematic evasions
+const stealth = StealthPlugin();
+stealth.enabledEvasions.delete("user-agent-override");
+stealth.enabledEvasions.delete("navigator.plugins");
+stealth.enabledEvasions.delete("navigator.webdriver");
+puppeteer.use(stealth);
 
 // Scraper function
 export const scrapeSAKeno = async () => {

@@ -114,6 +114,9 @@ import { scrapeNSWKenobyGame } from "../controllers/kenoScraper/NSWkenoDrawNumbe
 import { scrapeVICKenoByGame } from "../controllers/kenoScraper/VICkenoDrawNumberScraper.controller.js";
 import { scrapeACTKenoByGame } from "../controllers/kenoScraper/ACTkenoDrawNumberScraper.controller.js";
 import { scrapeSAKenoByGame } from "../controllers/kenoScraper/SAkenoDrawNumberScraper.controller.js";
+import { scrapeTrackSideResultsWithRetry as scrapeNSWTrackside } from "../controllers/TracksiteScaper/NSWTrackSideScraperScaping.controller.js";
+import { scrapeTrackSideResultsWithRetry as scrapeVICTrackside } from "../controllers/TracksiteScaper/VICTrackSideScraperScaping.controller.js";
+import { scrapeTrackSideResultsWithRetry as scrapeACTTrackside } from "../controllers/TracksiteScaper/ACTTrackSideScraperScaping.controller.js";
 
 // 🟢 NSW Scraper Scheduler (every 1 minute)
 let runningNSW = false;
@@ -191,4 +194,35 @@ schedule.scheduleJob("*/4 * * * *", async () => {
   }
 
   runningSA = false;
+});
+
+// 🟢 TrackSide Scheduler (every 5 minutes) - run NSW, VIC, ACT scrapers sequentially
+let runningTrackSide = false;
+schedule.scheduleJob("*/5 * * * *", async () => {
+  if (runningTrackSide) return;
+  runningTrackSide = true;
+  console.log("🕐 TrackSide Job triggered at", new Date().toLocaleString());
+
+  try {
+    console.log("➡️ Running NSW TrackSide scraper...");
+    await scrapeNSWTrackside();
+  } catch (err) {
+    console.error("❌ NSW TrackSide error:", err.message || err);
+  }
+
+  try {
+    console.log("➡️ Running VIC TrackSide scraper...");
+    await scrapeVICTrackside();
+  } catch (err) {
+    console.error("❌ VIC TrackSide error:", err.message || err);
+  }
+
+  try {
+    console.log("➡️ Running ACT TrackSide scraper...");
+    await scrapeACTTrackside();
+  } catch (err) {
+    console.error("❌ ACT TrackSide error:", err.message || err);
+  }
+
+  runningTrackSide = false;
 });
