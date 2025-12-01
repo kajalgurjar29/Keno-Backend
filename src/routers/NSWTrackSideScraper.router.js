@@ -14,7 +14,7 @@ router.get("/latest", async (req, res) => {
     res.json(results);
   } catch (err) {
     res.status(500).json({ error: err.message });
-  }
+  } 
 });
 
 router.get("/latestbyGame", async (req, res) => {
