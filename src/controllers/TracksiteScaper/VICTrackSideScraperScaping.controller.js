@@ -1,225 +1,47 @@
 // VIC TrackSide Racing Results Scraper
-// Based on ACTTrackSideScraperScaping.controller.js but forces VIC region
+// Mirrors Keno scraper pattern with robust error handling
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import chromium from "chromium";
 import TrackSideResult from "../../models/TrackSideResult.VIC.model.js";
+import { exec } from "child_process";
 import util from "util";
 const execAsync = util.promisify(exec);
-import { exec } from "child_process";
 
+// ✅ Use stealth plugin but disable problematic evasions
 const stealth = StealthPlugin();
 stealth.enabledEvasions.delete("user-agent-override");
 stealth.enabledEvasions.delete("navigator.plugins");
 stealth.enabledEvasions.delete("navigator.webdriver");
 puppeteer.use(stealth);
 
-export const scrapeTrackSideResults = async () => {
-  const proxyHost = process.env.PROXY_HOST || "au.decodo.com";
-  const proxyPort = process.env.PROXY_PORT || "30001";
-  const proxyUser = process.env.PROXY_USER_TRACKSIDE || "spr1wu95yq";
-  const proxyPass = process.env.PROXY_PASS_TRACKSIDE || "w06feLHNn1Cma3=ioy";
-
-  const proxyUrl = `http://${proxyHost}:${proxyPort}`;
-  const args = [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
-    "--disable-dev-shm-usage",
-    `--proxy-server=${proxyUrl}`,
-  ];
-  const executablePath = process.env.CHROMIUM_PATH || chromium.executablePath;
-
-  let browser;
+// Kill any existing Chromium/Chrome processes
+const killZombieChromium = async () => {
   try {
-    browser = await puppeteer.launch({ headless: true, executablePath, args });
-    const page = await browser.newPage();
-    if (proxyUser && proxyPass)
-      await page.authenticate({ username: proxyUser, password: proxyPass });
-
-    await page.goto("https://tabtrackside.com.au/results", {
-      waitUntil: "networkidle2",
-      timeout: 120000,
-    });
-
-    // Force region to VIC for this controller
-    let location = "VIC";
-    await page.waitForTimeout(3000);
-
-    const possibleSelectors = [
-      ".results-list",
-      ".results__list",
-      ".result-card",
-      ".game-result",
-      ".result-item",
-      "table.results",
-      ".race-results",
-      ".results-container",
-    ];
-    let foundSelector = null;
-    for (const sel of possibleSelectors) {
-      try {
-        await page.waitForSelector(sel, { timeout: 4000 });
-        foundSelector = sel;
-        break;
-      } catch (e) {}
-    }
-    if (!foundSelector) await page.waitForTimeout(2000);
-
-    const results = await page.evaluate(() => {
-      const containers = [];
-      const selectors = [
-        ".result-card",
-        ".game-result",
-        ".result-item",
-        "tr[data-game]",
-        "table.results tr",
-        ".result-row",
-        ".results__item",
-      ];
-      selectors.forEach((s) =>
-        document.querySelectorAll(s).forEach((el) => containers.push(el))
+    if (process.platform === "win32") {
+      await execAsync(
+        "taskkill /F /IM chrome.exe /T 2>nul & taskkill /F /IM chromium.exe /T 2>nul"
       );
-      const uniqueContainers = Array.from(new Set(containers));
-      const gameResults = [];
-      uniqueContainers.forEach((element) => {
-        try {
-          const numberEls = element.querySelectorAll(
-            ".number, .ball, .result-number, .number__item, td.number, span.number"
-          );
-          let numbers = Array.from(numberEls)
-            .map((n) => parseInt(n.textContent.trim(), 10))
-            .filter((n) => !isNaN(n));
-          if (numbers.length === 0) {
-            const text = element.innerText || element.textContent || "";
-            const matches = text.match(/\b(\d{1,2})\b/g) || [];
-            numbers = matches.map(Number).filter((n) => !isNaN(n));
-          }
-          numbers = Array.from(new Set(numbers)).filter(
-            (n) => n >= 1 && n <= 80
-          );
-          if (numbers.length >= 2 && numbers.length <= 10) {
-            const titleEl =
-              element.querySelector(
-                ".game-name, .game-title, .title, th:first-child, td:first-child"
-              ) ||
-              element.querySelector("h3") ||
-              element.querySelector("h2");
-            const gameName = titleEl
-              ? (titleEl.textContent || titleEl.innerText).trim()
-              : (
-                  element.getAttribute("aria-label") ||
-                  element.getAttribute("data-game") ||
-                  ""
-                )
-                  .toString()
-                  .trim();
-            const name =
-              gameName && gameName.length > 0
-                ? gameName
-                : "TRACKSIDE_" + numbers.slice(0, 3).join("_");
-            const exists = gameResults.some(
-              (g) =>
-                JSON.stringify(g.numbers.sort()) ===
-                JSON.stringify(numbers.sort())
-            );
-            if (!exists)
-              gameResults.push({
-                gameName: name,
-                drawNumber: "",
-                numbers,
-                timestamp: new Date().toISOString(),
-              });
-          }
-        } catch (e) {}
-      });
-      if (gameResults.length === 0) {
-        const lines = document.body.innerText.split("\n");
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (!line) continue;
-          if (/^[\d\s,]+$/.test(line)) {
-            const nums = line
-              .split(/[\s,]+/)
-              .map((n) => parseInt(n, 10))
-              .filter((n) => !isNaN(n) && n >= 1 && n <= 80);
-            if (nums.length >= 2 && nums.length <= 10) {
-              let gameName = "TRACKSIDE_FALLBACK";
-              for (let j = Math.max(0, i - 3); j < i; j++) {
-                const prev = lines[j].trim();
-                if (
-                  prev &&
-                  /^[A-Z\s]+$/.test(prev) &&
-                  prev.length > 3 &&
-                  prev.length < 30
-                ) {
-                  gameName = prev;
-                  break;
-                }
-              }
-              gameResults.push({
-                gameName,
-                drawNumber: "",
-                numbers: Array.from(new Set(nums)),
-                timestamp: new Date().toISOString(),
-              });
-            }
-          }
-        }
-      }
-      return gameResults;
-    });
-
-    if (results.length === 0)
-      return [
-        {
-          gameName: "THUMBSUCKER",
-          drawNumber: "22",
-          numbers: [2, 5, 7, 12, 15, 20],
-          timestamp: new Date().toISOString(),
-        },
-      ];
-
-    let savedCount = 0;
-    for (const result of results) {
-      try {
-        const gameId = `${result.gameName}_${result.numbers.join("_")}`;
-        const filter = { gameId: gameId, location: location.toUpperCase() };
-        const update = {
-          gameId: gameId,
-          gameName: result.gameName,
-          drawNumber: result.drawNumber || "",
-          numbers: result.numbers,
-          location: location.toUpperCase(),
-          date: new Date().toISOString().split("T")[0],
-          timestamp: new Date(),
-          scraperVersion: "1.0",
-        };
-        const savedDoc = await TrackSideResult.findOneAndUpdate(
-          filter,
-          update,
-          { upsert: true, new: true, setDefaultsOnInsert: true }
-        );
-        if (savedDoc) savedCount++;
-      } catch (dbErr) {
-        console.error(
-          `DB Error saving ${result.gameName}:`,
-          dbErr && dbErr.message ? dbErr.message : dbErr
-        );
-      }
+    } else {
+      await execAsync('pkill -f "chrome|chromium" || true');
     }
-
-    return results;
+    console.log("🧹 VIC: Cleaned up zombie processes");
   } catch (err) {
-    throw err;
-  } finally {
-    if (browser) {
-      try {
-        await browser.close();
-      } catch (e) {}
-    }
+    console.warn("⚠️ VIC: Could not kill processes:", err.message);
   }
 };
 
+// Safe close browser
+const safeClose = async (browser) => {
+  if (!browser) return;
+  try {
+    await browser.close();
+  } catch (e) {
+    await killZombieChromium();
+  }
+};
+
+// Retry wrapper
 const retry = async (fn, retries = 3, delay = 2000) => {
   let lastError;
   for (let i = 0; i < retries; i++) {
@@ -227,29 +49,253 @@ const retry = async (fn, retries = 3, delay = 2000) => {
       return await fn();
     } catch (err) {
       lastError = err;
+      console.warn(`⚠️ VIC Retry ${i + 1}/${retries} failed: ${err.message}`);
       if (i < retries - 1) await new Promise((r) => setTimeout(r, delay));
     }
   }
   throw lastError;
 };
 
-export const scrapeTrackSideResultsWithRetry = () =>
-  retry(scrapeTrackSideResults, 3, 3000);
+// Launch browser with proxy
+const launchBrowser = async (proxyUrl, proxyUser, proxyPass) => {
+  let executablePath = process.env.CHROMIUM_PATH || chromium.path;
+  console.log(`📍 VIC: Using executable path: ${executablePath}`);
 
+  const args = [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    `--proxy-server=${proxyUrl}`,
+  ];
+
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      executablePath,
+      args,
+    });
+  } catch (launchErr) {
+    console.warn(
+      `⚠️ VIC: Launch with executablePath failed, trying without it. Error: ${launchErr.message}`
+    );
+    try {
+      browser = await puppeteer.launch({
+        headless: true,
+        args,
+      });
+    } catch (fallbackErr) {
+      console.error(
+        `❌ VIC: Both launch attempts failed: ${fallbackErr.message}`
+      );
+      throw fallbackErr;
+    }
+  }
+
+  const page = await browser.newPage();
+
+  if (proxyUser && proxyPass) {
+    await page.authenticate({ username: proxyUser, password: proxyPass });
+  }
+
+  await page.setUserAgent(
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+    "AppleWebKit/537.36 (KHTML, like Gecko) " +
+    "Chrome/124.0.0.0 Safari/537.36"
+  );
+  await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
+
+  return { browser, page };
+};
+
+// Main scraper function
+export const scrapeTrackSideResults = async () => {
+  const proxyHost = process.env.PROXY_HOST || "gw.dataimpulse.com";
+  const proxyPort = process.env.PROXY_PORT || "823";
+  const proxyUser = process.env.PROXY_USER_VIC;
+  const proxyPass = process.env.PROXY_PASS_VIC;
+  const proxyUrl = `http://${proxyHost}:${proxyPort}`;
+  const targetUrl = "https://tabtrackside.com.au/results";
+  const location = "VIC";
+
+  const runScraperOnce = async () => {
+    let browser, page;
+    try {
+      console.log("🚀 VIC: Launching browser...");
+      ({ browser, page } = await launchBrowser(proxyUrl, proxyUser, proxyPass));
+
+      // Navigation with retry for detached frame
+      let navOk = false;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          console.log(
+            `🌐 VIC: Navigating to ${targetUrl} (attempt ${attempt})...`
+          );
+          const response = await page.goto(targetUrl, {
+            waitUntil: "domcontentloaded",
+            timeout: 30000,
+          });
+          if (!response || !response.ok())
+            throw new Error(`Bad response: ${response?.status()}`);
+          navOk = true;
+          break;
+        } catch (err) {
+          if (/detached/i.test(err.message)) {
+            console.warn(
+              `⚠️ VIC: Navigation failed (detached frame) attempt ${attempt}`
+            );
+            await safeClose(browser);
+            ({ browser, page } = await launchBrowser(
+              proxyUrl,
+              proxyUser,
+              proxyPass
+            ));
+            continue;
+          }
+          throw err;
+        }
+      }
+      if (!navOk) throw new Error("Navigation failed after retries");
+
+      // Check for block/restriction
+      const bodyText = await page.evaluate(() => document.body.innerText);
+      if (/Access Denied|blocked|verify|cloudflare/i.test(bodyText)) {
+        throw new Error("Blocked by WAF or access denied");
+      }
+
+      await new Promise((r) => setTimeout(r, 2000));
+
+      // Wait for game results to appear
+      await retry(() =>
+        page.waitForSelector(
+          'div[data-testid^="results-row-wrapper-"]',
+          { timeout: 15000 }
+        )
+      );
+
+      // Extract game results
+      const results = await page.evaluate(() => {
+        const containers = Array.from(document.querySelectorAll('div[data-testid^="results-row-wrapper-"]'));
+        const gameResults = [];
+
+        containers.forEach((element) => {
+          try {
+            // Extract Game Name (e.g., "Game 765")
+            const gameNameEl = element.querySelector('span[data-testid^="result-game-number-"]');
+            const gameName = gameNameEl ? gameNameEl.textContent.trim() : "";
+
+            // Extract Runners (Numbers)
+            const runnerEls = element.querySelectorAll('span[data-testid^="runner-"]');
+            let numbers = Array.from(runnerEls)
+              .map((n) => parseInt(n.textContent.trim(), 10))
+              .filter((n) => !isNaN(n));
+
+            // Deduplicate
+            numbers = Array.from(new Set(numbers));
+
+            if (gameName && numbers.length > 0) {
+              // Check if already added
+              const exists = gameResults.some(g => g.gameName === gameName);
+              if (!exists) {
+                gameResults.push({
+                  gameName,
+                  numbers,
+                  timestamp: new Date().toISOString(),
+                });
+              }
+            }
+          } catch (e) { }
+        });
+
+        return gameResults;
+      });
+
+      console.log(`✅ VIC: Found ${results.length} game results`);
+
+      if (results.length === 0) {
+        throw new Error(
+          "No game results extracted from page (selector mismatch?)"
+        );
+      }
+
+      // Save to DB
+      let savedCount = 0;
+      for (const result of results) {
+        try {
+          const gameId = `${result.gameName}_${result.numbers.join("_")}`;
+          const filter = { gameId, location };
+          const update = {
+            gameId,
+            gameName: result.gameName,
+            numbers: result.numbers,
+            location,
+            date: new Date().toISOString().split("T")[0],
+            timestamp: new Date(),
+            scraperVersion: "2.0",
+          };
+
+          const savedDoc = await TrackSideResult.findOneAndUpdate(
+            filter,
+            update,
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+          );
+
+          if (savedDoc) {
+            console.log(
+              `✅ VIC: Saved ${result.gameName
+              } - Numbers: ${result.numbers.join(",")}`
+            );
+            savedCount++;
+          }
+        } catch (dbErr) {
+          console.error(
+            `❌ VIC: DB Error saving ${result.gameName}:`,
+            dbErr.message
+          );
+        }
+      }
+
+      console.log(
+        `✅ VIC: ${savedCount}/${results.length} results saved to DB`
+      );
+      await safeClose(browser);
+      return results;
+    } catch (err) {
+      console.error("❌ VIC runScraperOnce failed:", err.message);
+      await safeClose(browser);
+      throw err;
+    }
+  };
+
+  // Outer retry for full scraper
+  return await retry(
+    async () => {
+      await killZombieChromium();
+      return await runScraperOnce();
+    },
+    3,
+    5000
+  );
+};
+
+// Wrapped version with retry
+export const scrapeTrackSideResultsWithRetry = () => {
+  return scrapeTrackSideResults();
+};
+
+// Get latest results from database
 export const getLatestTrackSideResults = async (
   location = "VIC",
   limit = 10
 ) => {
   try {
-    const results = await TrackSideResult.find({
-      location: location.toUpperCase(),
-    })
+    const results = await TrackSideResult.find({ location })
       .sort({ timestamp: -1 })
       .limit(limit)
       .lean();
     return results;
   } catch (err) {
-    console.error("Error fetching TrackSide results:", err.message);
+    console.error("❌ VIC: Error fetching TrackSide results:", err.message);
     return [];
   }
 };
