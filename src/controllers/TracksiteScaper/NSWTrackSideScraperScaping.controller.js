@@ -198,8 +198,13 @@ export const scrapeTrackSideResults = async () => {
               // Check if already added
               const exists = gameResults.some(g => g.gameName === gameName);
               if (!exists) {
+                // Parse game number from "Game 123"
+                const gameNumberMatch = gameName.match(/Game\s+(\d+)/i);
+                const gameNumber = gameNumberMatch ? parseInt(gameNumberMatch[1], 10) : null;
+
                 gameResults.push({
                   gameName,
+                  gameNumber,
                   numbers,
                   timestamp: new Date().toISOString(),
                 });
@@ -228,6 +233,7 @@ export const scrapeTrackSideResults = async () => {
           const update = {
             gameId,
             gameName: result.gameName,
+            gameNumber: result.gameNumber,
             numbers: result.numbers,
             location,
             date: new Date().toISOString().split("T")[0],
@@ -284,7 +290,7 @@ export const scrapeTrackSideResultsWithRetry = () => {
   return scrapeTrackSideResults();
 };
 
-// Get latest results from database
+// Get latest results from database (Legacy)
 export const getLatestTrackSideResults = async (
   location = "NSW",
   limit = 10
@@ -298,5 +304,133 @@ export const getLatestTrackSideResults = async (
   } catch (err) {
     console.error("❌ NSW: Error fetching TrackSide results:", err.message);
     return [];
+  }
+};
+
+// Get filtered results with pagination
+export const getFilteredTrackSideResults = async (query = {}) => {
+  try {
+    const {
+      location = "NSW",
+      limit = 10,
+      page = 1,
+      startDate,
+      endDate,
+      startGameNo,
+      endGameNo,
+    } = query;
+
+    const filter = { location };
+
+    // Date Filtering
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = startDate;
+      if (endDate) filter.date.$lte = endDate;
+    }
+
+    // Game Number Filtering
+    if (startGameNo || endGameNo) {
+      filter.gameNumber = {};
+      if (startGameNo) filter.gameNumber.$gte = parseInt(startGameNo);
+      if (endGameNo) filter.gameNumber.$lte = parseInt(endGameNo);
+    }
+
+    const limitNum = parseInt(limit);
+    const pageNum = parseInt(page);
+    const skip = (pageNum - 1) * limitNum;
+
+    const totalCount = await TrackSideResult.countDocuments(filter);
+    const results = await TrackSideResult.find(filter)
+      .sort({ timestamp: -1 }) // Sort by latest first
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+
+    return {
+      data: results,
+      totalCount,
+      totalPages: Math.ceil(totalCount / limitNum),
+      currentPage: pageNum,
+    };
+  } catch (err) {
+    console.error("❌ NSW: Error fetching filtered TrackSide results:", err.message);
+    return { data: [], totalCount: 0, totalPages: 0, currentPage: 1 };
+  }
+};
+
+// ✅ PAGINATION ONLY (No Filters)
+export const getPaginatedTrackSideResultsOnly = async (query = {}) => {
+  try {
+    const { location = "NSW", limit = 10, page = 1 } = query;
+
+    const filter = { location };
+    // Explicitly ignoring other filters
+
+    const limitNum = parseInt(limit);
+    const pageNum = parseInt(page);
+    const skip = (pageNum - 1) * limitNum;
+
+    const totalCount = await TrackSideResult.countDocuments(filter);
+    const results = await TrackSideResult.find(filter)
+      .sort({ timestamp: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+
+    return {
+      data: results,
+      totalCount,
+      totalPages: Math.ceil(totalCount / limitNum),
+      currentPage: pageNum,
+    };
+  } catch (err) {
+    console.error("❌ NSW: Error fetching paginated results:", err.message);
+    return { data: [], totalCount: 0, totalPages: 0, currentPage: 1 };
+  }
+};
+
+// ✅ FILTERING ONLY (No Pagination - returns all matches)
+export const getFilteredTrackSideResultsOnly = async (query = {}) => {
+  try {
+    const {
+      location = "NSW",
+      startDate,
+      endDate,
+      startGameNo,
+      endGameNo,
+    } = query;
+
+    const filter = { location };
+
+    // Date Filtering
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = startDate;
+      if (endDate) filter.date.$lte = endDate;
+    }
+
+    // Game Number Filtering
+    if (startGameNo || endGameNo) {
+      filter.gameNumber = {};
+      if (startGameNo) filter.gameNumber.$gte = parseInt(startGameNo);
+      if (endGameNo) filter.gameNumber.$lte = parseInt(endGameNo);
+    }
+
+    // No skip/limit here, just find all matching
+    const results = await TrackSideResult.find(filter)
+      .sort({ timestamp: -1 })
+      .lean();
+
+    return {
+      data: results,
+      totalCount: results.length,
+      // No pages logic needed really, but keeping structure consistent if desired, or just omit
+      totalPages: 1,
+      currentPage: 1,
+    };
+  } catch (err) {
+    console.error("❌ NSW: Error fetching filtered results:", err.message);
+    return { data: [], totalCount: 0, totalPages: 0, currentPage: 1 };
   }
 };

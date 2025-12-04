@@ -4,6 +4,7 @@ const TrackSideResultSchema = new mongoose.Schema({
   gameId: { type: String, required: true, unique: true },
   gameName: { type: String, required: true },
   drawNumber: { type: String, default: "" },
+  gameNumber: { type: Number },
   numbers: [{ type: Number, required: true }],
   location: { type: String, default: "NSW", required: true },
   date: { type: String },
