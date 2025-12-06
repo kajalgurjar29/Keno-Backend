@@ -1,6 +1,6 @@
 import User from "../../models/User.model.js";
 
-// @desc Get user data by ID
+// @desc Get user data by ID data
 // @route GET /api/profile/user/:id
 // controllers/Authentication/ProfileManagement.js
 // @access Private
