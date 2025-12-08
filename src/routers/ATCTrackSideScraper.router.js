@@ -29,7 +29,7 @@ router.get("/latestbyGame", async (req, res) => {
   }
 });
 
-router.get("/track-results", verifyAPIKey, async (req, res) => {
+router.get("/track-results/ATC", verifyAPIKey, async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
     const results = await getLatestTrackSideResults("ACT", limit);
