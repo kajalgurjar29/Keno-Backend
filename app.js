@@ -67,11 +67,6 @@ app.use("/api/v1/nsw-trackside", NSWTrackSideRouter);
 app.use("/api/v1/vic-trackside", VICTrackSideRouter);
 app.use("/api/v1/atc-trackside", ATCTrackSideRouter);
 
-if (!process.env.PORT) {
-  console.error("Missing environment variables! Check .env file.");
-  process.exit(1);
-}
-
 const PORT = process.env.PORT || 3000;
 
 server.on("error", (err) => {
@@ -89,8 +84,9 @@ server.on("error", (err) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`✅ Server is running on port ${PORT}`);
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Server is running and listening on 0.0.0.0:${PORT}`);
+  console.log(`   If accessing remotely, use: http://<SERVER_IP>:${PORT}`);
 });
 
 export { app };
