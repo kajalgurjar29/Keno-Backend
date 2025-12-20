@@ -3,6 +3,8 @@
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import chromium from "chromium";
+import fs from "fs";
+import { execSync } from "child_process";
 import TrackSideResult from "../../models/TrackSideResult.ACT.model.js";
 import { exec } from "child_process";
 import util from "util";
@@ -58,7 +60,17 @@ const retry = async (fn, retries = 3, delay = 2000) => {
 
 // Launch browser with proxy
 const launchBrowser = async (proxyUrl, proxyUser, proxyPass) => {
-  let executablePath = process.env.CHROMIUM_PATH || chromium.path;
+  const getChromiumPath = () => {
+    const candidates = [process.env.CHROMIUM_PATH, chromium.path, "/usr/bin/chromium-browser", "/usr/bin/chromium", "/usr/bin/google-chrome-stable", "/usr/bin/google-chrome", "/snap/bin/chromium"].filter(Boolean);
+    for (const p of candidates) { try { if (fs.existsSync(p)) return p; } catch {}
+    }
+    const bins = ["chromium-browser", "chromium", "google-chrome-stable", "google-chrome"];
+    for (const b of bins) { try { const out = execSync(`which ${b}`, { encoding: "utf8" }).trim(); if (out) return out; } catch {}
+    }
+    return null;
+  };
+
+  let executablePath = getChromiumPath() || null;
   console.log(`📍 ACT: Using executable path: ${executablePath}`);
 
   const args = [

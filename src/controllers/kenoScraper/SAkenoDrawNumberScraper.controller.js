@@ -2,6 +2,8 @@
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import chromium from "chromium";
+import fs from "fs";
+import { execSync } from "child_process";
 import KenoResult from "../../models/SAkenoDrawResult.model.js";
 import util from "util";
 const execAsync = util.promisify(exec);
@@ -185,7 +187,17 @@ export const scrapeSAKenoByGame = async () => {
   const proxyPort = process.env.PROXY_PORT || "30001";
   const proxyUser = process.env.PROXY_USER_SA || "spr1wu95yq";
   const proxyPass = process.env.PROXY_PASS_SA || "w06feLHNn1Cma3=ioy";
-  const executablePath = process.env.CHROMIUM_PATH || chromium.path;
+    const getChromiumPath = () => {
+      const candidates = [process.env.CHROMIUM_PATH, chromium.path, "/usr/bin/chromium-browser", "/usr/bin/chromium", "/usr/bin/google-chrome-stable", "/usr/bin/google-chrome", "/snap/bin/chromium"].filter(Boolean);
+      for (const p of candidates) { try { if (fs.existsSync(p)) return p; } catch {}
+      }
+      const bins = ["chromium-browser", "chromium", "google-chrome-stable", "google-chrome"];
+      for (const b of bins) { try { const out = execSync(`which ${b}`, { encoding: "utf8" }).trim(); if (out) return out; } catch {}
+      }
+      return null;
+    };
+
+    const executablePath = getChromiumPath() || null;
 
   const proxyUrl = `http://${proxyHost}:${proxyPort}`;
   const targetUrl = "https://www.keno.com.au/check-results";

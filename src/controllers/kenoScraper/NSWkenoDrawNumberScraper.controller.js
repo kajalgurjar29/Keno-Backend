@@ -2,6 +2,8 @@
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import chromium from "chromium";
+import fs from "fs";
+import { execSync } from "child_process";
 import KenoResult from "../../models/NSWkenoDrawResult.model.js";
 import util from "util";
 const execAsync = util.promisify(exec);
@@ -31,8 +33,38 @@ export const scrapeNSWKeno = async () => {
     `--proxy-server=${proxyUrl}`,
   ];
 
-  // Ensure Chromium path is correct
-  const executablePath = process.env.CHROMIUM_PATH || chromium.path;
+  // Ensure Chromium path is correct (robust fallback)
+  const getChromiumPath = () => {
+    const candidates = [
+      process.env.CHROMIUM_PATH,
+      chromium.path,
+      "/usr/bin/chromium-browser",
+      "/usr/bin/chromium",
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/google-chrome",
+      "/snap/bin/chromium",
+    ].filter(Boolean);
+    for (const p of candidates) {
+      try {
+        if (fs.existsSync(p)) return p;
+      } catch {}
+    }
+    const bins = [
+      "chromium-browser",
+      "chromium",
+      "google-chrome-stable",
+      "google-chrome",
+    ];
+    for (const b of bins) {
+      try {
+        const out = execSync(`which ${b}`, { encoding: "utf8" }).trim();
+        if (out) return out;
+      } catch {}
+    }
+    return null;
+  };
+
+  const executablePath = getChromiumPath() || null;
 
   const browser = await puppeteer.launch({
     headless: true,
@@ -150,7 +182,7 @@ export const scrapeNSWKenobyGame = async () => {
   const proxyPort = process.env.PROXY_PORT || "823";
   const proxyUser = process.env.PROXY_USER_NSW || "a9357935f3ded2c2b707";
   const proxyPass = process.env.PROXY_PASS_NSW || "c39b6f9adacd4155";
-  const executablePath = process.env.CHROMIUM_PATH || chromium.path;
+  const executablePath = getChromiumPath() || null;
 
   const proxyUrl = `http://${proxyHost}:${proxyPort}`;
 
