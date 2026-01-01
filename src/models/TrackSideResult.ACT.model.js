@@ -10,6 +10,12 @@ const TrackSideResultSchema = new mongoose.Schema({
   date: { type: String },
   timestamp: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now },
+   runners: [
+    {
+      horseNo: { type: Number },   // 1–12
+      position: { type: Number }   // 1,2,3,4...
+    }
+  ]
 });
 
 const ACTTrackSideResult = mongoose.model(
