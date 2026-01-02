@@ -5,6 +5,7 @@ import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import chromium from "chromium";
 import fs from "fs";
 import { execSync } from "child_process";
+import { getChromiumPath } from "../../utils/chromiumPath.js";
 import TrackSideResult from "../../models/TrackSideResult.NSW.model.js";
 import { exec } from "child_process";
 import util from "util";
@@ -60,16 +61,6 @@ const retry = async (fn, retries = 3, delay = 2000) => {
 
 // Launch browser with proxy
 const launchBrowser = async (proxyUrl, proxyUser, proxyPass) => {
-  const getChromiumPath = () => {
-    const candidates = [process.env.CHROMIUM_PATH, chromium.path, "/usr/bin/chromium-browser", "/usr/bin/chromium", "/usr/bin/google-chrome-stable", "/usr/bin/google-chrome", "/snap/bin/chromium"].filter(Boolean);
-    for (const p of candidates) { try { if (fs.existsSync(p)) return p; } catch {}
-    }
-    const bins = ["chromium-browser", "chromium", "google-chrome-stable", "google-chrome"];
-    for (const b of bins) { try { const out = execSync(`which ${b}`, { encoding: "utf8" }).trim(); if (out) return out; } catch {}
-    }
-    return null;
-  };
-
   let executablePath = getChromiumPath() || null;
   console.log(`📍 NSW: Using executable path: ${executablePath}`);
 
@@ -112,8 +103,8 @@ const launchBrowser = async (proxyUrl, proxyUser, proxyPass) => {
 
   await page.setUserAgent(
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-    "AppleWebKit/537.36 (KHTML, like Gecko) " +
-    "Chrome/124.0.0.0 Safari/537.36"
+      "AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Chrome/124.0.0.0 Safari/537.36"
   );
   await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
 
@@ -179,26 +170,31 @@ export const scrapeTrackSideResults = async () => {
 
       // Wait for game results to appear
       await retry(() =>
-        page.waitForSelector(
-          'div[data-testid^="results-row-wrapper-"]',
-          { timeout: 15000 }
-        )
+        page.waitForSelector('div[data-testid^="results-row-wrapper-"]', {
+          timeout: 15000,
+        })
       );
 
       // Extract game results
       const results = await page.evaluate(() => {
-        const containers = Array.from(document.querySelectorAll('div[data-testid^="results-row-wrapper-"]'));
+        const containers = Array.from(
+          document.querySelectorAll('div[data-testid^="results-row-wrapper-"]')
+        );
         const gameResults = [];
 
         containers.forEach((element) => {
           try {
             // Extract Game Name (e.g., "Game 765")
-            const gameNameEl = element.querySelector('span[data-testid^="result-game-number-"]');
+            const gameNameEl = element.querySelector(
+              'span[data-testid^="result-game-number-"]'
+            );
             const gameName = gameNameEl ? gameNameEl.textContent.trim() : "";
 
             // Extract Runners (Numbers)
             // The runners are in spans with data-testid="runner-X"
-            const runnerEls = element.querySelectorAll('span[data-testid^="runner-"]');
+            const runnerEls = element.querySelectorAll(
+              'span[data-testid^="runner-"]'
+            );
             let numbers = Array.from(runnerEls)
               .map((n) => parseInt(n.textContent.trim(), 10))
               .filter((n) => !isNaN(n));
@@ -208,11 +204,13 @@ export const scrapeTrackSideResults = async () => {
 
             if (gameName && numbers.length > 0) {
               // Check if already added
-              const exists = gameResults.some(g => g.gameName === gameName);
+              const exists = gameResults.some((g) => g.gameName === gameName);
               if (!exists) {
                 // Parse game number from "Game 123"
                 const gameNumberMatch = gameName.match(/Game\s+(\d+)/i);
-                const gameNumber = gameNumberMatch ? parseInt(gameNumberMatch[1], 10) : null;
+                const gameNumber = gameNumberMatch
+                  ? parseInt(gameNumberMatch[1], 10)
+                  : null;
 
                 gameResults.push({
                   gameName,
@@ -222,7 +220,7 @@ export const scrapeTrackSideResults = async () => {
                 });
               }
             }
-          } catch (e) { }
+          } catch (e) {}
         });
 
         return gameResults;
@@ -261,7 +259,8 @@ export const scrapeTrackSideResults = async () => {
 
           if (savedDoc) {
             console.log(
-              `✅ NSW: Saved ${result.gameName
+              `✅ NSW: Saved ${
+                result.gameName
               } - Numbers: ${result.numbers.join(",")}`
             );
             savedCount++;
@@ -366,7 +365,10 @@ export const getFilteredTrackSideResults = async (query = {}) => {
       currentPage: pageNum,
     };
   } catch (err) {
-    console.error("❌ NSW: Error fetching filtered TrackSide results:", err.message);
+    console.error(
+      "❌ NSW: Error fetching filtered TrackSide results:",
+      err.message
+    );
     return { data: [], totalCount: 0, totalPages: 0, currentPage: 1 };
   }
 };

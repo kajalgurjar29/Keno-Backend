@@ -5,6 +5,7 @@ import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import chromium from "chromium";
 import fs from "fs";
 import { execSync } from "child_process";
+import { getChromiumPath } from "../../utils/chromiumPath.js";
 import TrackSideResult from "../../models/TrackSideResult.ACT.model.js";
 import { exec } from "child_process";
 import util from "util";
@@ -60,16 +61,6 @@ const retry = async (fn, retries = 3, delay = 2000) => {
 
 // Launch browser with proxy
 const launchBrowser = async (proxyUrl, proxyUser, proxyPass) => {
-  const getChromiumPath = () => {
-    const candidates = [process.env.CHROMIUM_PATH, chromium.path, "/usr/bin/chromium-browser", "/usr/bin/chromium", "/usr/bin/google-chrome-stable", "/usr/bin/google-chrome", "/snap/bin/chromium"].filter(Boolean);
-    for (const p of candidates) { try { if (fs.existsSync(p)) return p; } catch {}
-    }
-    const bins = ["chromium-browser", "chromium", "google-chrome-stable", "google-chrome"];
-    for (const b of bins) { try { const out = execSync(`which ${b}`, { encoding: "utf8" }).trim(); if (out) return out; } catch {}
-    }
-    return null;
-  };
-
   let executablePath = getChromiumPath() || null;
   console.log(`📍 ACT: Using executable path: ${executablePath}`);
 
@@ -112,8 +103,8 @@ const launchBrowser = async (proxyUrl, proxyUser, proxyPass) => {
 
   await page.setUserAgent(
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-    "AppleWebKit/537.36 (KHTML, like Gecko) " +
-    "Chrome/124.0.0.0 Safari/537.36"
+      "AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Chrome/124.0.0.0 Safari/537.36"
   );
   await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
 
@@ -179,25 +170,30 @@ export const scrapeTrackSideResults = async () => {
 
       // Wait for game results to appear
       await retry(() =>
-        page.waitForSelector(
-          'div[data-testid^="results-row-wrapper-"]',
-          { timeout: 15000 }
-        )
+        page.waitForSelector('div[data-testid^="results-row-wrapper-"]', {
+          timeout: 15000,
+        })
       );
 
       // Extract game results
       const results = await page.evaluate(() => {
-        const containers = Array.from(document.querySelectorAll('div[data-testid^="results-row-wrapper-"]'));
+        const containers = Array.from(
+          document.querySelectorAll('div[data-testid^="results-row-wrapper-"]')
+        );
         const gameResults = [];
 
         containers.forEach((element) => {
           try {
             // Extract Game Name (e.g., "Game 765")
-            const gameNameEl = element.querySelector('span[data-testid^="result-game-number-"]');
+            const gameNameEl = element.querySelector(
+              'span[data-testid^="result-game-number-"]'
+            );
             const gameName = gameNameEl ? gameNameEl.textContent.trim() : "";
 
             // Extract Runners (Numbers)
-            const runnerEls = element.querySelectorAll('span[data-testid^="runner-"]');
+            const runnerEls = element.querySelectorAll(
+              'span[data-testid^="runner-"]'
+            );
             let numbers = Array.from(runnerEls)
               .map((n) => parseInt(n.textContent.trim(), 10))
               .filter((n) => !isNaN(n));
@@ -207,11 +203,13 @@ export const scrapeTrackSideResults = async () => {
 
             if (gameName && numbers.length > 0) {
               // Check if already added
-              const exists = gameResults.some(g => g.gameName === gameName);
+              const exists = gameResults.some((g) => g.gameName === gameName);
               if (!exists) {
                 // Parse game number from "Game 123"
                 const gameNumberMatch = gameName.match(/Game\s+(\d+)/i);
-                const gameNumber = gameNumberMatch ? parseInt(gameNumberMatch[1], 10) : null;
+                const gameNumber = gameNumberMatch
+                  ? parseInt(gameNumberMatch[1], 10)
+                  : null;
 
                 gameResults.push({
                   gameName,
@@ -221,7 +219,7 @@ export const scrapeTrackSideResults = async () => {
                 });
               }
             }
-          } catch (e) { }
+          } catch (e) {}
         });
 
         return gameResults;
@@ -237,6 +235,50 @@ export const scrapeTrackSideResults = async () => {
 
       // Save to DB
       let savedCount = 0;
+      // Helper: determine transient mongo/network errors
+      const isTransientMongoError = (err) => {
+        if (!err) return false;
+        const msg = (err.message || "").toLowerCase();
+        return (
+          err.name === "MongoNetworkError" ||
+          err.name === "MongooseServerSelectionError" ||
+          /timed out|network|econnreset|etimedout|server selection/i.test(msg)
+        );
+      };
+
+      // Helper: save with retries for transient errors and handle duplicates
+      const saveWithRetry = async (filter, update, options, retries = 3) => {
+        let lastErr;
+        for (let attempt = 1; attempt <= retries; attempt++) {
+          try {
+            return await TrackSideResult.findOneAndUpdate(
+              filter,
+              { $set: update },
+              options
+            );
+          } catch (err) {
+            lastErr = err;
+            if (err && err.code === 11000) {
+              // Duplicate key - another process inserted same doc concurrently
+              console.warn(
+                "⚠️ ACT: Duplicate key while upserting, skipping:",
+                err.keyValue || err.message
+              );
+              return null;
+            }
+            if (isTransientMongoError(err) && attempt < retries) {
+              console.warn(
+                `⚠️ ACT: Transient DB error (attempt ${attempt}), retrying...`,
+                err.message || err
+              );
+              await new Promise((r) => setTimeout(r, 1000 * attempt));
+              continue;
+            }
+            throw err;
+          }
+        }
+        throw lastErr;
+      };
       for (const result of results) {
         try {
           const gameId = `${result.gameName}_${result.numbers.join("_")}`;
@@ -252,24 +294,24 @@ export const scrapeTrackSideResults = async () => {
             scraperVersion: "2.0",
           };
 
-          const savedDoc = await TrackSideResult.findOneAndUpdate(
-            filter,
-            update,
-            { upsert: true, new: true, setDefaultsOnInsert: true }
-          );
+          // Use atomic $set to avoid replacement semantics and ensure defaults
+          const options = {
+            upsert: true,
+            new: true,
+            setDefaultsOnInsert: true,
+          };
+          const savedDoc = await saveWithRetry(filter, update, options, 3);
 
           if (savedDoc) {
             console.log(
-              `✅ ACT: Saved ${result.gameName
+              `✅ ACT: Saved ${
+                result.gameName
               } - Numbers: ${result.numbers.join(",")}`
             );
             savedCount++;
           }
         } catch (dbErr) {
-          console.error(
-            `❌ ACT: DB Error saving ${result.gameName}:`,
-            dbErr.message
-          );
+          console.error(`❌ ACT: DB Error saving ${result.gameName}:`, dbErr);
         }
       }
 
@@ -365,7 +407,10 @@ export const getFilteredTrackSideResults = async (query = {}) => {
       currentPage: pageNum,
     };
   } catch (err) {
-    console.error("❌ ACT: Error fetching filtered TrackSide results:", err.message);
+    console.error(
+      "❌ ACT: Error fetching filtered TrackSide results:",
+      err.message
+    );
     return { data: [], totalCount: 0, totalPages: 0, currentPage: 1 };
   }
 };

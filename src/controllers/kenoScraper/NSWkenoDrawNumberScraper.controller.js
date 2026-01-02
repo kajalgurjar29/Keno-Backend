@@ -4,10 +4,13 @@ import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import chromium from "chromium";
 import fs from "fs";
 import { execSync } from "child_process";
+import { getChromiumPath } from "../../utils/chromiumPath.js";
 import KenoResult from "../../models/NSWkenoDrawResult.model.js";
 import util from "util";
 const execAsync = util.promisify(exec);
 import { exec } from "child_process";
+
+// Use shared helper from src/utils/chromiumPath.js
 
 // ✅ Use stealth plugin but disable problematic evasions
 const stealth = StealthPlugin();
@@ -33,37 +36,7 @@ export const scrapeNSWKeno = async () => {
     `--proxy-server=${proxyUrl}`,
   ];
 
-  // Ensure Chromium path is correct (robust fallback)
-  const getChromiumPath = () => {
-    const candidates = [
-      process.env.CHROMIUM_PATH,
-      chromium.path,
-      "/usr/bin/chromium-browser",
-      "/usr/bin/chromium",
-      "/usr/bin/google-chrome-stable",
-      "/usr/bin/google-chrome",
-      "/snap/bin/chromium",
-    ].filter(Boolean);
-    for (const p of candidates) {
-      try {
-        if (fs.existsSync(p)) return p;
-      } catch {}
-    }
-    const bins = [
-      "chromium-browser",
-      "chromium",
-      "google-chrome-stable",
-      "google-chrome",
-    ];
-    for (const b of bins) {
-      try {
-        const out = execSync(`which ${b}`, { encoding: "utf8" }).trim();
-        if (out) return out;
-      } catch {}
-    }
-    return null;
-  };
-
+  // Use module-level `getChromiumPath` helper to discover Chromium/Chrome
   const executablePath = getChromiumPath() || null;
 
   const browser = await puppeteer.launch({
@@ -292,16 +265,30 @@ export const scrapeNSWKenobyGame = async () => {
       // Save to DB with idempotent upsert to avoid E11000 duplicate errors
       await retry(
         async () => {
+          if (!data || !data.draw || String(data.draw).trim() === "") {
+            console.warn("⚠️ NSW: Invalid draw value, skipping DB save:", data);
+            return;
+          }
+
           const upsertRes = await KenoResult.updateOne(
             { draw: String(data.draw) },
             { $setOnInsert: data },
             { upsert: true }
           );
-          if (upsertRes.upsertedCount && upsertRes.upsertedCount > 0) {
+
+          // Log full result for easier debugging across mongoose versions
+          console.log("NSW upsert result:", upsertRes);
+
+          const inserted =
+            (upsertRes.upsertedCount && upsertRes.upsertedCount > 0) ||
+            Boolean(upsertRes.upsertedId) ||
+            Boolean(upsertRes.upserted);
+
+          if (inserted) {
             console.log("✅ NSW data inserted:", data.draw);
           } else {
             console.log(
-              "ℹ️  NSW draw already exists, skipped insert:",
+              "ℹ️  NSW draw already exists or not inserted:",
               data.draw
             );
           }
