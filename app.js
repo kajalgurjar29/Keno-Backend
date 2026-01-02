@@ -6,11 +6,20 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { connectDB } from "./src/db/db.config.js";
 import { createServer } from "http";
-import "./src/middleware/schedular.middleware.js";
 
 dotenv.config({ path: "./.env" });
 
-connectDB();
+// Connect to DB first, then load scheduler so jobs run after DB is ready
+connectDB()
+  .then(() => {
+    import("./src/middleware/schedular.middleware.js")
+      .then(() => console.log("Scheduler loaded"))
+      .catch((e) => console.error("Failed loading scheduler:", e));
+  })
+  .catch((err) => {
+    console.error("Database connection failed during startup:", err);
+    process.exit(1);
+  });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,8 +58,22 @@ import historicalFrequencyRouter from "./src/routers/historicalFrequency.router.
 import NSWTrackSideRouter from "./src/routers/NSWTrackSideScraper.router.js";
 import VICTrackSideRouter from "./src/routers/VICTrackSideScraper.router.js";
 import ATCTrackSideRouter from "./src/routers/ATCTrackSideScraper.router.js";
-
+import favoritesRouter from "./src/routers/Favorites.router.js";
+import kenoQuickStatsRouter from "./src/routers/kenoQuickStats.router.js";
+import trackSideQuickStatsRouter from "./src/routers/kenoQuickStats.router.js";
+import tracksideTopFeaturedRouter from "./src/routers/tracksideTopFeatured.router.js";
+import kenoTopFeaturedRouter from "./src/routers/kenoTopFeatured.router.js";
+import notificationRoutes from "./src/routers/notification.routes.js";
+import adminAnalyticsRoutes from "./src/models/admin.analytics.routes.js";
+import kenoLiveRoute from "./src/routers/kenoLive.route.js";
+import kenoHotColdRoute from "./src/routers/kenoHotCold.route.js";
+import kenoDashboardRoute from "./src/routers/kenoDashboard.route.js";
 // API Routes
+app.use("/api/v1/notification", notificationRoutes);
+app.use("/api/v1", kenoLiveRoute);
+app.use("/api/v1", kenoHotColdRoute);
+app.use("/api/v1", kenoDashboardRoute);
+
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/users", forgotPasswordRoutes);
 app.use("/api/v1/reset-password", resetPasswordRoutes);
@@ -66,12 +89,23 @@ app.use("/api/v1/historical-frequency", historicalFrequencyRouter);
 app.use("/api/v1/nsw-trackside", NSWTrackSideRouter);
 app.use("/api/v1/vic-trackside", VICTrackSideRouter);
 app.use("/api/v1/atc-trackside", ATCTrackSideRouter);
+app.use("/api/v1/favorites", favoritesRouter);
+app.use("/api/v1", kenoQuickStatsRouter);
+app.use("/api/v1", trackSideQuickStatsRouter);
+app.use("/api/v1/trackside", tracksideTopFeaturedRouter);
+app.use("/api/v1/keno", kenoTopFeaturedRouter);
+app.use("/api/v1/analytics", adminAnalyticsRoutes);
+
+if (!process.env.PORT) {
+  console.error("Missing environment variables! Check .env file.");
+  process.exit(1);
+}
 
 const PORT = process.env.PORT || 3000;
 
 server.on("error", (err) => {
   if (err.code === "EADDRINUSE") {
-    console.error(`❌ Port ${PORT} is already in use. Please:`);
+    console.error(` Port ${PORT} is already in use. Please:`);
     console.error(`   1. Stop the existing process using port ${PORT}`);
     console.error(`   2. Or change the PORT in your .env file`);
     console.error(
@@ -79,14 +113,13 @@ server.on("error", (err) => {
     );
     process.exit(1);
   } else {
-    console.error("❌ Server error:", err);
+    console.error(" Server error:", err);
     process.exit(1);
   }
 });
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ Server is running and listening on 0.0.0.0:${PORT}`);
-  console.log(`   If accessing remotely, use: http://<SERVER_IP>:${PORT}`);
+server.listen(PORT, () => {
+  console.log(` Server is running on port ${PORT}`);
 });
 
 export { app };
