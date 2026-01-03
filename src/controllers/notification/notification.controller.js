@@ -7,7 +7,7 @@ import Notification from "../../models/Notification.js";
 ====================================================== */
 export const sendNotification = async (req, res) => {
   const { token, title, body, userId } = req.body;
-
+console.log("REQ BODY:", req);
   if (!token || !title || !body || !userId) {
     return res.status(400).json({
       success: false,

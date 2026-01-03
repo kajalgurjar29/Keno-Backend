@@ -5,7 +5,7 @@ import { getTrackSideQuickStats } from "../controllers/kenoScraper/horseQuickSta
 
 const router = express.Router();
 
-router.get("/quick-stats", verifyAPIKey, getCombinedKenoQuickStats);
+router.get("/keno/quick-stats", verifyAPIKey, getCombinedKenoQuickStats);
 router.get("/trackside/quick-stats", verifyAPIKey, getTrackSideQuickStats);
 
 export default router;

@@ -5,7 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { connectDB } from "./src/db/db.config.js";
-import { createServer } from "http";        
+import { createServer } from "http";
 
 dotenv.config({ path: "./.env" });
 
@@ -52,7 +52,7 @@ import NSWkenoRouter from "./src/routers/NSWkenoDrawNumberScraper.router.js";
 import VICkenoRouter from "./src/routers/VICkenoDrawNumberScraper.router.js";
 import ATCkenoRouter from "./src/routers/ATCkenoDrawNumberScraper.router.js";
 import SAkenoRouter from "./src/routers/SAkenoDrawNumberScraper.router.js";
-import OverDueComboRouter from "./src/routers/OverdueCombos.router.js";   
+import OverDueComboRouter from "./src/routers/OverdueCombos.router.js";
 import historicalFrequencyRouter from "./src/routers/historicalFrequency.router.js";
 import NSWTrackSideRouter from "./src/routers/NSWTrackSideScraper.router.js";
 import VICTrackSideRouter from "./src/routers/VICTrackSideScraper.router.js";
@@ -67,11 +67,13 @@ import adminAnalyticsRoutes from "./src/models/admin.analytics.routes.js";
 import kenoLiveRoute from "./src/routers/kenoLive.route.js";
 import kenoHotColdRoute from "./src/routers/kenoHotCold.route.js";
 import kenoDashboardRoute from "./src/routers/kenoDashboard.route.js";
+import resultsRoutes from "./src/routers/results.routes.js";
 // API Routes
 app.use("/api/v1/notification", notificationRoutes);
 app.use("/api/v1", kenoLiveRoute);
 app.use("/api/v1", kenoHotColdRoute);
 app.use("/api/v1", kenoDashboardRoute);
+app.use("/api/v1/results", resultsRoutes);
 
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/users", forgotPasswordRoutes);
