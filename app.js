@@ -67,11 +67,13 @@ import adminAnalyticsRoutes from "./src/models/admin.analytics.routes.js";
 import kenoLiveRoute from "./src/routers/kenoLive.route.js";
 import kenoHotColdRoute from "./src/routers/kenoHotCold.route.js";
 import kenoDashboardRoute from "./src/routers/kenoDashboard.route.js";
+import resultsRoutes from "./src/routers/results.routes.js";
 // API Routes
 app.use("/api/v1/notification", notificationRoutes);
 app.use("/api/v1", kenoLiveRoute);
 app.use("/api/v1", kenoHotColdRoute);
 app.use("/api/v1", kenoDashboardRoute);
+app.use("/api/v1/results", resultsRoutes);
 
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/users", forgotPasswordRoutes);
