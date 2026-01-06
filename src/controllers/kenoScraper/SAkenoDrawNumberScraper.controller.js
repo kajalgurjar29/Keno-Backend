@@ -10,7 +10,7 @@ import util from "util";
 const execAsync = util.promisify(exec);
 import { exec } from "child_process";
 
-// ✅ Use stealth plugin but disable problematic evasions
+//  Use stealth plugin but disable problematic evasions
 const stealth = StealthPlugin();
 stealth.enabledEvasions.delete("user-agent-override");
 stealth.enabledEvasions.delete("navigator.plugins");
@@ -19,7 +19,7 @@ puppeteer.use(stealth);
 
 // Scraper function
 export const scrapeSAKeno = async () => {
-  // ✅ Proxy details
+  //  Proxy details
   const proxyHost = process.env.PROXY_HOST || "au.decodo.com";
   const proxyPort = process.env.PROXY_PORT || "30001";
   const proxyUser = process.env.PROXY_USER_SA || "spr1wu95yq";

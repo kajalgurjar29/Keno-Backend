@@ -1,27 +1,30 @@
 import mongoose from "mongoose";
 
-const FavoriteSchema = new mongoose.Schema({
+const favoriteSchema = new mongoose.Schema(
+  {
     userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
     },
+
+    gameType: {
+      type: String,
+      enum: ["TRACKSIDE", "KENO"],
+      required: true,
+    },
+
+    resultId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+    },
+
     numbers: {
-        type: [Number],
-        required: true,
-        validate: {
-            validator: function (v) {
-                return v && v.length > 0;
-            },
-            message: "A favorite must have at least one number.",
-        },
+      type: [Number],
+      required: true,
     },
-    createdAt: {
-        type: Date,
-        default: Date.now,
-    },
-});
+  },
+  { timestamps: true }
+);
 
-const Favorite = mongoose.model("Favorite", FavoriteSchema);
-
-export default Favorite;
+export default mongoose.model("Favorite", favoriteSchema);
