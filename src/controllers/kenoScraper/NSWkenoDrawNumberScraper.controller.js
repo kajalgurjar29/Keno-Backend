@@ -111,6 +111,32 @@ const filterIncreasingNumbers = (numbers) => {
   return result;
 };
 
+// Normalize various date formats into ISO YYYY-MM-DD where possible
+const normalizeDateToISO = (dateStr) => {
+  if (!dateStr) return null;
+  // already ISO
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+  // match DD-MM-YYYY or D-M-YYYY or DD/MM/YYYY
+  const m = String(dateStr)
+    .trim()
+    .match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (m) {
+    const dd = String(m[1]).padStart(2, "0");
+    const mm = String(m[2]).padStart(2, "0");
+    const yyyy = m[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  // fallback to Date parsing
+  const d = new Date(dateStr);
+  if (!isNaN(d)) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return null;
+};
+
 // Retry wrapper
 const retry = async (fn, retries = 3, delay = 2000) => {
   let lastError;
@@ -262,6 +288,10 @@ export const scrapeNSWKenobyGame = async () => {
 
       data.numbers = filterIncreasingNumbers(data.numbers);
 
+      // Normalize scraped date to ISO (YYYY-MM-DD) to keep a single canonical form
+      const normalized = normalizeDateToISO(data.date);
+      if (normalized) data.date = normalized;
+
       // Save to DB with idempotent upsert to avoid E11000 duplicate errors
       await retry(
         async () => {
@@ -270,9 +300,18 @@ export const scrapeNSWKenobyGame = async () => {
             return;
           }
 
+          // Upsert by `date` + `draw` so we only skip when both match (date+draw duplicates)
           const upsertRes = await KenoResult.updateOne(
-            { draw: String(data.draw) },
-            { $setOnInsert: data },
+            { date: data.date, draw: String(data.draw) },
+            {
+              $setOnInsert: {
+                draw: String(data.draw),
+                date: data.date,
+                numbers: data.numbers,
+                location: data.location || "NSW",
+                createdAt: new Date(),
+              },
+            },
             { upsert: true }
           );
 

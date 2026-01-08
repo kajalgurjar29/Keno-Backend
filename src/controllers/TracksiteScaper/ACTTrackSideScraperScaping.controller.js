@@ -279,17 +279,46 @@ export const scrapeTrackSideResults = async () => {
         }
         throw lastErr;
       };
+      // Normalize date helper (local to this file)
+      const normalizeDateToISO_local = (dateStr) => {
+        if (!dateStr) return null;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+        const m = String(dateStr)
+          .trim()
+          .match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+        if (m) {
+          const dd = String(m[1]).padStart(2, "0");
+          const mm = String(m[2]).padStart(2, "0");
+          const yyyy = m[3];
+          return `${yyyy}-${mm}-${dd}`;
+        }
+        const d = new Date(dateStr);
+        if (!isNaN(d)) {
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, "0");
+          const dd = String(d.getDate()).padStart(2, "0");
+          return `${yyyy}-${mm}-${dd}`;
+        }
+        return null;
+      };
       for (const result of results) {
         try {
           const gameId = `${result.gameName}_${result.numbers.join("_")}`;
-          const filter = { gameId, location };
+          const isoDate =
+            normalizeDateToISO_local(new Date().toISOString().split("T")[0]) ||
+            new Date().toISOString().split("T")[0];
+          const filter = {
+            date: isoDate,
+            gameNumber: result.gameNumber,
+            location,
+          };
           const update = {
             gameId,
             gameName: result.gameName,
             gameNumber: result.gameNumber,
             numbers: result.numbers,
             location,
-            date: new Date().toISOString().split("T")[0],
+            date: isoDate,
             timestamp: new Date(),
             scraperVersion: "2.0",
           };

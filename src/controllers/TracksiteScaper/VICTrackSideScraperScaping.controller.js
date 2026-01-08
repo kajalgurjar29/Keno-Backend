@@ -59,6 +59,29 @@ const retry = async (fn, retries = 3, delay = 2000) => {
   throw lastError;
 };
 
+// Normalize various date formats into ISO YYYY-MM-DD where possible
+const normalizeDateToISO = (dateStr) => {
+  if (!dateStr) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+  const m = String(dateStr)
+    .trim()
+    .match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (m) {
+    const dd = String(m[1]).padStart(2, "0");
+    const mm = String(m[2]).padStart(2, "0");
+    const yyyy = m[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  const d = new Date(dateStr);
+  if (!isNaN(d)) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return null;
+};
+
 // Launch browser with proxy
 const launchBrowser = async (proxyUrl, proxyUser, proxyPass) => {
   let executablePath = getChromiumPath() || null;
@@ -238,21 +261,28 @@ export const scrapeTrackSideResults = async () => {
       for (const result of results) {
         try {
           const gameId = `${result.gameName}_${result.numbers.join("_")}`;
-          const filter = { gameId, location };
+          const isoDate =
+            normalizeDateToISO(new Date().toISOString().split("T")[0]) ||
+            new Date().toISOString().split("T")[0];
+          const filter = {
+            date: isoDate,
+            gameNumber: result.gameNumber,
+            location,
+          };
           const update = {
             gameId,
             gameName: result.gameName,
             gameNumber: result.gameNumber,
             numbers: result.numbers,
             location,
-            date: new Date().toISOString().split("T")[0],
+            date: isoDate,
             timestamp: new Date(),
             scraperVersion: "2.0",
           };
 
           const savedDoc = await TrackSideResult.findOneAndUpdate(
             filter,
-            update,
+            { $setOnInsert: update },
             { upsert: true, new: true, setDefaultsOnInsert: true }
           );
 
