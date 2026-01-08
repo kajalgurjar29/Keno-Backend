@@ -9,7 +9,7 @@ import jwt from "jsonwebtoken";
 // This endpoint allows new users to register
 export const registerUser = async (req, res) => {
   try {
-    const { fullName, email, dob, role } = req.body;
+    const { fullName, email, dob, role,pin, default_state  } = req.body;
 
     console.log("Incoming Register Data:", req.body);
 
@@ -18,6 +18,17 @@ export const registerUser = async (req, res) => {
       return res
         .status(400)
         .json({ message: "Full name, email, and DOB are required" });
+    }
+
+    // pin setting validation
+     if (!pin) {
+      return res.status(400).json({ message: "PIN is required" });
+    }
+
+    if (!/^\d{4}(\d{2})?$/.test(pin)) {
+      return res
+        .status(400)
+        .json({ message: "PIN must be 4 or 6 digits" });
     }
 
     // 2. Check if user already exists
@@ -36,6 +47,8 @@ export const registerUser = async (req, res) => {
       email,
       dob,
       role: role || "user",
+       pin,
+      default_state: default_state || "NSW",
       otp,
       otpExpiry,
       password: null, // explicitly null
@@ -58,6 +71,7 @@ export const registerUser = async (req, res) => {
         email: newUser.email,
         dob: newUser.dob,
         role: newUser.role,
+         default_state: newUser.default_state,
       },
     });
   } catch (error) {
@@ -151,40 +165,130 @@ export const setPassword = async (req, res) => {
 // @access Public
 // This endpoint allows users to log in with their email and password
 // It returns a JWT token and user details
+
+// export const loginUser = async (req, res) => {
+//   try {
+//     const { email, password } = req.body;
+
+//     console.log("\n=== LOGIN ATTEMPT ===");
+//     console.log({ email });
+
+//     // Validate input
+//     if (!email || !password) {
+//       return res.status(400).json({
+//         message: "Email and password are required",
+//       });
+//     }
+
+//     // Find user
+//     const user = await User.findOne({ email });
+//     if (!user) {
+//       return res.status(404).json({ message: "User not found" });
+//     }
+
+//     // Check verification
+//     if (!user.isVerified) {
+//       return res.status(401).json({
+//         message: "Account not verified. Please verify your email first.",
+//       });
+//     }
+
+//     // Check password
+//     const isMatch = await user.comparePassword(password);
+//     if (!isMatch) {
+//       return res.status(401).json({ message: "Invalid password" });
+//     }
+
+//     // Generate JWT with role
+//     const token = jwt.sign(
+//       { id: user._id, role: user.role },
+//       process.env.ACCESS_TOKEN_SECRET,
+//       { expiresIn: process.env.ACCESS_TOKEN_EXPIRY }
+//     );
+
+//     console.log("✅ Login successful");
+
+//     res.status(200).json({
+//       message: "Login successful",
+//       token,
+//       user: {
+//         id: user._id,
+//         fullName: user.fullName,
+//         email: user.email,
+//         role: user.role, // role comes from DB
+//       },
+//     });
+//   } catch (error) {
+//     console.error("🔥 Login error:", error);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// };
+
+
+
+
 export const loginUser = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, pin } = req.body;
 
     console.log("\n=== LOGIN ATTEMPT ===");
-    console.log({ email });
+    console.log({ email, loginType: password ? "PASSWORD" : "PIN" });
 
-    // Validate input
-    if (!email || !password) {
+    // 1. Validate input
+    if (!email) {
       return res.status(400).json({
-        message: "Email and password are required",
+        message: "Email is required",
       });
     }
 
-    // Find user
+    if (!password && !pin) {
+      return res.status(400).json({
+        message: "Password or PIN is required",
+      });
+    }
+
+    // 2. Find user
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Check verification
+    // 3. Check verification
     if (!user.isVerified) {
       return res.status(401).json({
         message: "Account not verified. Please verify your email first.",
       });
     }
 
-    // Check password
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return res.status(401).json({ message: "Invalid password" });
+    let isMatch = false;
+
+    // 4️⃣ Password login (OLD LOGIC – SAFE)
+    if (password) {
+      if (!user.password) {
+        return res.status(400).json({
+          message: "Password login not available for this user",
+        });
+      }
+      isMatch = await user.comparePassword(password);
     }
 
-    // Generate JWT with role
+    // 5️⃣ PIN login (NEW)
+    if (pin) {
+      if (!user.pin) {
+        return res.status(400).json({
+          message: "PIN login not enabled for this user",
+        });
+      }
+      isMatch = await user.comparePin(pin);
+    }
+
+    if (!isMatch) {
+      return res.status(401).json({
+        message: "Invalid credentials",
+      });
+    }
+
+    // 6. Generate JWT with role
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.ACCESS_TOKEN_SECRET,
@@ -200,14 +304,16 @@ export const loginUser = async (req, res) => {
         id: user._id,
         fullName: user.fullName,
         email: user.email,
-        role: user.role, // role comes from DB
+        role: user.role,
+        default_state: user.default_state,
       },
     });
   } catch (error) {
-    console.error("🔥 Login error:", error);
+    console.error(" Login error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 export const saveFcmToken = async (req, res) => {
   const userId = req.user.id; // JWT se

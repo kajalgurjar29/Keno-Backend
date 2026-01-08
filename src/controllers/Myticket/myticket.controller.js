@@ -3,13 +3,25 @@ import Ticket from "../../models/ticket.model.js";
 // Create Ticket
 export const createTicket = async (req, res) => {
   try {
-    const ticket = new Ticket(req.body);
+    const ticket = new Ticket({
+      ...req.body,
+      assignedTo: req.user.id, // ✅ yahi sahi jagah hai
+    });
+
     await ticket.save();
-    res.status(201).json(ticket);
+
+    res.status(201).json({
+      success: true,
+      ticket,
+    });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(400).json({
+      success: false,
+      error: err.message,
+    });
   }
 };
+
 
 // Get All Tickets
 export const getTickets = async (req, res) => {

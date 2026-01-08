@@ -1,3 +1,4 @@
+
 // import mongoose from "mongoose";
 // import bcrypt from "bcrypt";
 
@@ -40,11 +41,31 @@
 //       type: Boolean,
 //       default: false,
 //     },
+//       pin: {
+//       type: String, 
+//       default: null,
+//     },
+
+//     default_state: {
+//       type: String,
+//       enum: ["NSW"],
+//       default: "NSW",
+//     },
+
+//     status: {
+//       type: String,
+//       enum: ["active", "inactive"],
+//       default: "active",
+//     },
+//      fcmToken: {
+//       type: String,
+//       default: null,
+//     },
 //   },
 //   { timestamps: true }
 // );
 
-// // 🔐 Hash password before saving
+// //  Hash password before saving
 // userSchema.pre("save", async function (next) {
 //   if (!this.isModified("password") || !this.password) {
 //     return next();
@@ -57,12 +78,14 @@
 //   }
 // });
 
-// // ✅ Compare entered password with hashed password
+// //  Compare entered password with hashed password
 // userSchema.methods.comparePassword = async function (candidatePassword) {
 //   return bcrypt.compare(candidatePassword, this.password);
 // };
 
 // export default mongoose.model("User", userSchema);
+           
+
 
 import mongoose from "mongoose";
 import bcrypt from "bcrypt";
@@ -89,11 +112,15 @@ const userSchema = new mongoose.Schema(
       default: null,
       minlength: [6, "Password must be at least 6 characters"],
     },
+
+    /* ================= ROLE ================= */
     role: {
       type: String,
       enum: ["user", "admin"],
       default: "user",
     },
+
+    /* ================= OTP ================= */
     otp: {
       type: String,
       default: null,
@@ -107,12 +134,28 @@ const userSchema = new mongoose.Schema(
       default: false,
     },
 
+    /* ================= PIN ================= */
+    pin: {
+      type: String, // hashed PIN
+      default: null,
+    },
+
+    /* ================= DEFAULT STATE ================= */
+    default_state: {
+      type: String,
+      enum: ["NSW"],
+      default: "NSW",
+    },
+
+    /* ================= STATUS ================= */
     status: {
       type: String,
       enum: ["active", "inactive"],
       default: "active",
     },
-     fcmToken: {
+
+    /* ================= FCM ================= */
+    fcmToken: {
       type: String,
       default: null,
     },
@@ -120,7 +163,7 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-//  Hash password before saving
+/* ================= PASSWORD HASH ================= */
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password") || !this.password) {
     return next();
@@ -133,9 +176,27 @@ userSchema.pre("save", async function (next) {
   }
 });
 
-//  Compare entered password with hashed password
+/* ================= PIN HASH ================= */
+userSchema.pre("save", async function (next) {
+  if (!this.isModified("pin") || !this.pin) {
+    return next();
+  }
+  try {
+    this.pin = await bcrypt.hash(this.pin, 10);
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* ================= PASSWORD COMPARE ================= */
 userSchema.methods.comparePassword = async function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
+};
+
+/* ================= PIN COMPARE ================= */
+userSchema.methods.comparePin = async function (candidatePin) {
+  return bcrypt.compare(candidatePin, this.pin);
 };
 
 export default mongoose.model("User", userSchema);

@@ -6,11 +6,12 @@ import {
   updateTicket,
   deleteTicket,
 } from "../controllers/Myticket/myticket.controller.js";
+import verifyToken from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
 // CRUD Routes
-router.post("/create", createTicket); // Create
+router.post("/create", verifyToken, createTicket); // Create
 router.get("/get", getTickets); // Read All
 router.get("/get/:id", getTicketById); // Read One
 router.put("/update/:id", updateTicket); // Update
