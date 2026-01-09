@@ -107,3 +107,106 @@ export const setNewPassword = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+
+
+
+
+
+;
+
+
+
+export const requestPinReset = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const otp = otpGenerator.generate(6, {
+      digits: true,
+      upperCaseAlphabets: false,
+      lowerCaseAlphabets: false,
+      specialChars: false,
+    });
+
+    const expiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    await OtpToken.create({ userId: user._id, otp, expiry });
+
+    await sendEmail(
+      user.email,
+      "PIN Reset Request",
+      `Hello ${user.fullName},
+Your OTP for PIN reset is: ${otp}
+This OTP will expire in 10 minutes.`
+    );
+
+    res.status(200).json({ message: "OTP sent for PIN reset" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+
+
+
+export const verifyPinOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const otpRecord = await OtpToken.findOne({ userId: user._id, otp });
+    if (!otpRecord) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    if (otpRecord.expiry < new Date()) {
+      return res.status(400).json({ message: "OTP expired" });
+    }
+
+    res.status(200).json({ message: "OTP verified for PIN reset", success: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+
+
+export const setNewPin = async (req, res) => {
+  try {
+    const { email, newPin } = req.body;
+
+    if (!/^\d{4}(\d{2})?$/.test(newPin)) {
+      return res.status(400).json({
+        message: "PIN must be 4 or 6 digits",
+      });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    user.pin = newPin; 
+    await user.save();
+
+    res.status(200).json({
+      message: "PIN reset successful",
+      success: true,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
