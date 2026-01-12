@@ -98,6 +98,11 @@ app.use("/api/v1/trackside", tracksideTopFeaturedRouter);
 app.use("/api/v1/keno", kenoTopFeaturedRouter);
 app.use("/api/v1/analytics", adminAnalyticsRoutes);
 
+// Root health-check route
+app.get("/", (req, res) => {
+  res.send("API running");
+});
+
 if (!process.env.PORT) {
   console.error("Missing environment variables! Check .env file.");
   process.exit(1);
