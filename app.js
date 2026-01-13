@@ -68,8 +68,11 @@ import kenoLiveRoute from "./src/routers/kenoLive.route.js";
 import kenoHotColdRoute from "./src/routers/kenoHotCold.route.js";
 import kenoDashboardRoute from "./src/routers/kenoDashboard.route.js";
 import resultsRoutes from "./src/routers/results.routes.js";
+import paymentRoutes from "./src/routers/payment.routes.js";
 
 // API Routes
+app.use("/api/v1/payments", paymentRoutes);
+
 app.use("/api/v1/notification", notificationRoutes);
 app.use("/api/v1", kenoLiveRoute);
 app.use("/api/v1", kenoHotColdRoute);
@@ -97,11 +100,6 @@ app.use("/api/v1", trackSideQuickStatsRouter);
 app.use("/api/v1/trackside", tracksideTopFeaturedRouter);
 app.use("/api/v1/keno", kenoTopFeaturedRouter);
 app.use("/api/v1/analytics", adminAnalyticsRoutes);
-
-// Root health-check route
-app.get("/", (req, res) => {
-  res.send("API running");
-});
 
 if (!process.env.PORT) {
   console.error("Missing environment variables! Check .env file.");

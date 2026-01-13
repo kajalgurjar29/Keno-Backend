@@ -1,6 +1,7 @@
 import Favorite from "../../models/Favorite.model.js";
 import VICTrackSideResult from "../../models/TrackSideResult.VIC.model.js";
 import KenoResult from "../../models/KenoResult.model.js";
+import mongoose from "mongoose";
 
 /* LIKE (TrackSide VIC + Keno)*/
 export const likeResult = async (req, res) => {
@@ -17,9 +18,12 @@ export const likeResult = async (req, res) => {
       resultId,
     });
 
-    if (alreadyLiked) {
-      return res.status(409).json({ message: "Already liked" });
-    }
+ if (alreadyLiked) {
+  return res.status(409).json({
+    message: "Already liked",
+    favorite: alreadyLiked,   
+  });
+}
 
     //  ensure result exists
     let ResultModel;
@@ -30,11 +34,17 @@ export const likeResult = async (req, res) => {
       return res.status(400).json({ message: "Invalid game type" });
     }
 
-    const resultExists = await ResultModel.findById(resultId);
-    if (!resultExists) {
-      return res.status(404).json({ message: "Result not found" });
-    }
+    // const resultExists = await ResultModel.findById(resultId);
+    // if (!resultExists) {
+    //   return res.status(404).json({ message: "Result not found" });
+    // }
 
+    if (mongoose.Types.ObjectId.isValid(resultId)) {
+  const resultExists = await ResultModel.findById(resultId);
+  if (!resultExists) {
+    return res.status(404).json({ message: "Result not found" });
+  }
+}
     //  save favorite
     const favorite = await Favorite.create({
       userId,

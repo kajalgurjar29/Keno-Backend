@@ -32,7 +32,6 @@ export const changePassword = async (req, res) => {
   }
 };
 
-
 export const updatePin = async (req, res) => {
   try {
     const userId = req.user.id; // from JWT
@@ -82,5 +81,6 @@ export const updatePin = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 

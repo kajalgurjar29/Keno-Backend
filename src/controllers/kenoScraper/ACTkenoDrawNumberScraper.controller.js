@@ -147,29 +147,6 @@ const filterIncreasingNumbers = (numbers) => {
   return result;
 };
 
-// Normalize various date formats into ISO YYYY-MM-DD where possible
-const normalizeDateToISO = (dateStr) => {
-  if (!dateStr) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
-  const m = String(dateStr)
-    .trim()
-    .match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if (m) {
-    const dd = String(m[1]).padStart(2, "0");
-    const mm = String(m[2]).padStart(2, "0");
-    const yyyy = m[3];
-    return `${yyyy}-${mm}-${dd}`;
-  }
-  const d = new Date(dateStr);
-  if (!isNaN(d)) {
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
-  }
-  return null;
-};
-
 const retry = async (fn, retries = 3, delay = 2000) => {
   let lastError;
   for (let i = 0; i < retries; i++) {
@@ -431,25 +408,11 @@ export const scrapeACTKenoByGame = async () => {
 
       data.numbers = filterIncreasingNumbers(data.numbers);
 
-      // Normalize date and upsert by date+draw so we only skip when both match
-      const normalized =
-        normalizeDateToISO(data.date) ||
-        normalizeDateToISO(new Date().toISOString().split("T")[0]);
-      if (normalized) data.date = normalized;
-
       // Save to DB with idempotent upsert (avoid E11000 duplicate key errors)
       await retry(async () => {
         const upsertRes = await KenoResult.updateOne(
-          { date: data.date, draw: String(data.draw) },
-          {
-            $setOnInsert: {
-              draw: String(data.draw),
-              date: data.date,
-              numbers: data.numbers,
-              location: data.location || "ACT",
-              createdAt: new Date(),
-            },
-          },
+          { draw: String(data.draw) },
+          { $setOnInsert: data },
           { upsert: true }
         );
 
@@ -457,7 +420,7 @@ export const scrapeACTKenoByGame = async () => {
           console.log("✅ ACT data inserted:", data.draw);
         } else {
           console.log(
-            "ℹ️  ACT draw already exists or not inserted:",
+            "ℹ️  ACT draw already exists, skipped insert:",
             data.draw
           );
         }

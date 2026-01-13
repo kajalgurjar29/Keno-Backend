@@ -110,13 +110,6 @@ export const setNewPassword = async (req, res) => {
 
 
 
-
-
-
-;
-
-
-
 export const requestPinReset = async (req, res) => {
   try {
     const { email } = req.body;
@@ -208,5 +201,4 @@ export const setNewPin = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 

@@ -15,7 +15,7 @@ const favoriteSchema = new mongoose.Schema(
     },
 
     resultId: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: String,   // 🔥 FIXED
       required: true,
     },
 
