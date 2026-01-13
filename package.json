@@ -43,6 +43,7 @@
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "razorpay": "^2.9.4",
     "socket.io": "^4.7.5",
+    "stripe": "^20.1.2",
     "twilio": "^5.2.2",
     "xlsx": "^0.18.5"
   },

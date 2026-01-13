@@ -4,7 +4,7 @@ import {
   verifyOtp,
   setPassword,
   loginUser,
-  saveFcmToken
+  saveFcmToken,
 } from "../controllers/Authentication/UserRegister.controller.js";
 import verifyAPIKey from "../middleware/verifyAPIKey.js";
 import auth from "../middleware/auth.middleware.js";
