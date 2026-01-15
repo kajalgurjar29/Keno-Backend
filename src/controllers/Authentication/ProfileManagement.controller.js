@@ -4,18 +4,41 @@ import User from "../../models/User.model.js";
 // @route GET /api/profile/user/:id
 // controllers/Authentication/ProfileManagement.js
 // @access Private
+// export const getUserData = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+
+//     // Fetch user but exclude password and role fields
+//     const user = await User.findById(id).select("-password -role");
+
+//     if (!user) {
+//       return res.status(404).json({ message: "User not found" });
+//     }
+
+//     res.json(user);
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// };
+
 export const getUserData = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Fetch user but exclude password and role fields
     const user = await User.findById(id).select("-password -role");
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    res.json(user);
+    res.json({
+      success: true,
+      data: {
+        ...user.toObject(),
+        pin: user.pin   
+      }
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });
