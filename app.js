@@ -46,7 +46,7 @@ app.use(express.urlencoded({ extended: true, limit: "16kb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Serve static files from the React/Vue/Angular dist folder
-app.use(express.static(path.join(__dirname, "dist 14", "dist")));
+app.use(express.static(path.join(__dirname, "dist")));
 
 console.log("Middleware initialized.");
 
