@@ -1,4 +1,3 @@
-
 // import mongoose from "mongoose";
 // import bcrypt from "bcrypt";
 
@@ -42,7 +41,7 @@
 //       default: false,
 //     },
 //       pin: {
-//       type: String, 
+//       type: String,
 //       default: null,
 //     },
 
@@ -84,8 +83,6 @@
 // };
 
 // export default mongoose.model("User", userSchema);
-           
-
 
 import mongoose from "mongoose";
 import bcrypt from "bcrypt";
@@ -106,6 +103,11 @@ const userSchema = new mongoose.Schema(
     dob: {
       type: Date,
       required: [true, "Date of birth is required"],
+    },
+    gender: {
+      type: String,
+      enum: ["male", "female", "other"],
+      default: "other",
     },
     password: {
       type: String,
@@ -134,20 +136,17 @@ const userSchema = new mongoose.Schema(
       default: false,
     },
 
-
     pin: {
       type: String, // hashed PIN
       default: null,
     },
 
-  
     default_state: {
       type: String,
-    enum: ["NSW", "VIC", "ACT", "SA"],
+      enum: ["NSW", "VIC", "ACT", "SA"],
       default: "VIC",
     },
 
-   
     status: {
       type: String,
       enum: ["active", "inactive"],

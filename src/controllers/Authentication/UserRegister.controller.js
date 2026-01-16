@@ -1,4 +1,3 @@
-import bcrypt from "bcryptjs";
 import User from "../../models/User.model.js";
 import sendEmail from "../../utils/sendEmail.js ";
 import jwt from "jsonwebtoken";
@@ -9,7 +8,7 @@ import jwt from "jsonwebtoken";
 // This endpoint allows new users to register
 export const registerUser = async (req, res) => {
   try {
-    const { fullName, email, dob, role,pin, default_state  } = req.body;
+    const { fullName, email, dob, role, pin, default_state, gender } = req.body;
 
     console.log("Incoming Register Data:", req.body);
 
@@ -21,14 +20,12 @@ export const registerUser = async (req, res) => {
     }
 
     // pin setting validation
-     if (!pin) {
+    if (!pin) {
       return res.status(400).json({ message: "PIN is required" });
     }
 
     if (!/^\d{4}(\d{2})?$/.test(pin)) {
-      return res
-        .status(400)
-        .json({ message: "PIN must be 4 or 6 digits" });
+      return res.status(400).json({ message: "PIN must be 4 or 6 digits" });
     }
 
     // 2. Check if user already exists
@@ -46,8 +43,9 @@ export const registerUser = async (req, res) => {
       fullName,
       email,
       dob,
+      gender: gender || "other",
       role: role || "user",
-       pin,
+      pin,
       default_state: default_state || "NSW",
       otp,
       otpExpiry,
@@ -70,8 +68,9 @@ export const registerUser = async (req, res) => {
         fullName: newUser.fullName,
         email: newUser.email,
         dob: newUser.dob,
+        gender: newUser.gender,
         role: newUser.role,
-         default_state: newUser.default_state,
+        default_state: newUser.default_state,
       },
     });
   } catch (error) {
@@ -224,9 +223,6 @@ export const setPassword = async (req, res) => {
 //   }
 // };
 
-
-
-
 export const loginUser = async (req, res) => {
   try {
     const { email, password, pin } = req.body;
@@ -304,6 +300,7 @@ export const loginUser = async (req, res) => {
         id: user._id,
         fullName: user.fullName,
         email: user.email,
+        gender: user.gender,
         pin: user.pin,
         role: user.role,
         default_state: user.default_state,
@@ -314,7 +311,6 @@ export const loginUser = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
 
 export const saveFcmToken = async (req, res) => {
   const userId = req.user.id; // JWT se
