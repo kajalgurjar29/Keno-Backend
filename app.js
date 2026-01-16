@@ -29,7 +29,12 @@ const server = createServer(app);
 
 app.use(
   cors({
-    origin: "*",
+    origin: [
+      process.env.FRONTEND_URL,
+      process.env.API_BASE_URL,
+      "http://localhost:3000", // For development
+      "https://localhost:3000",
+    ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE"],
   })
@@ -39,6 +44,9 @@ app.use(express.json());
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true, limit: "16kb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// Serve static files from the React/Vue/Angular dist folder
+app.use(express.static(path.join(__dirname, "dist 14", "dist")));
 
 console.log("Middleware initialized.");
 
@@ -100,6 +108,11 @@ app.use("/api/v1", trackSideQuickStatsRouter);
 app.use("/api/v1/trackside", tracksideTopFeaturedRouter);
 app.use("/api/v1/keno", kenoTopFeaturedRouter);
 app.use("/api/v1/analytics", adminAnalyticsRoutes);
+
+// Catch-all handler: send back index.html for any non-API routes (SPA routing)
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "dist 14", "dist", "index.html"));
+});
 
 if (!process.env.PORT) {
   console.error("Missing environment variables! Check .env file.");
