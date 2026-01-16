@@ -153,6 +153,7 @@ const userSchema = new mongoose.Schema(
       default: "active",
     },
 
+    
     fcmToken: {
       type: String,
       default: null,

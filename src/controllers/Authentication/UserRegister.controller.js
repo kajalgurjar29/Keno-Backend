@@ -1,4 +1,9 @@
 import User from "../../models/User.model.js";
+import Ticket from "../../models/ticket.model.js";
+import Payment from "../../models/Payment.js";
+import Notification from "../../models/Notification.js";
+import Favorite from "../../models/Favorite.model.js";
+import OtpToken from "../../models/otpToken.model.js";
 import sendEmail from "../../utils/sendEmail.js ";
 import jwt from "jsonwebtoken";
 
@@ -325,4 +330,44 @@ export const saveFcmToken = async (req, res) => {
   });
 
   res.json({ success: true });
+};
+
+// @desc Delete user account and all associated data
+// @route DELETE /api/delete-account
+// @access Private (requires authentication)
+export const deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Find the user first to confirm they exist
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Delete all associated data
+    await Promise.all([
+      // Delete user's tickets
+      Ticket.deleteMany({ assignedTo: userId }),
+
+      // Delete user's payments
+      Payment.deleteMany({ userId }),
+
+      // Delete user's notifications
+      Notification.deleteMany({ userId }),
+
+      // Delete user's favorites
+      Favorite.deleteMany({ userId }),
+    ]);
+
+    // Finally, delete the user account
+    await User.findByIdAndDelete(userId);
+
+    res.status(200).json({
+      message: "Account and all associated data deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete account error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
 };
