@@ -37,7 +37,7 @@ app.use(
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE"],
-  })
+  }),
 );
 
 app.use(express.json());
@@ -111,7 +111,7 @@ app.use("/api/v1/analytics", adminAnalyticsRoutes);
 
 // Catch-all handler: send back index.html for any non-API routes (SPA routing)
 app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "dist 14", "dist", "index.html"));
+  res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
 if (!process.env.PORT) {
@@ -127,7 +127,7 @@ server.on("error", (err) => {
     console.error(`   1. Stop the existing process using port ${PORT}`);
     console.error(`   2. Or change the PORT in your .env file`);
     console.error(
-      `   3. On Windows, run: netstat -ano | findstr :${PORT} to find the process`
+      `   3. On Windows, run: netstat -ano | findstr :${PORT} to find the process`,
     );
     process.exit(1);
   } else {
