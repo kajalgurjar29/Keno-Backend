@@ -27,18 +27,30 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const server = createServer(app);
 
+const allowedOrigins = [
+  "https://www.puntdata.com.au",
+  "https://puntdata.com.au",
+  "http://localhost:3000",
+];
+
 app.use(
   cors({
-    origin: [
-      process.env.FRONTEND_URL,
-      process.env.API_BASE_URL,
-      "http://localhost:3000", // For development
-      "https://localhost:3000",
-    ],
+    origin: function (origin, callback) {
+      // allow requests with no origin (Postman, mobile apps)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("CORS not allowed"));
+      }
+    },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
+app.options("*", cors());
 
 app.use(express.json());
 app.use(bodyParser.json());
