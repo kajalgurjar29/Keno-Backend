@@ -294,17 +294,25 @@ export const scrapeSAKenoByGame = async () => {
 
       data.numbers = filterIncreasingNumbers(data.numbers);
 
+      // Create drawid for uniqueness checking (draw + date combination)
+      data.drawid = `${data.draw}_${data.date}`;
+
       // Save to DB with idempotent upsert (avoid E11000 duplicate key errors)
       await retry(async () => {
         const upsertRes = await KenoResult.updateOne(
-          { draw: String(data.draw) },
+          { drawid: data.drawid },
           { $setOnInsert: data },
           { upsert: true }
         );
         if (upsertRes.upsertedCount && upsertRes.upsertedCount > 0) {
-          console.log("✅ SA data inserted:", data.draw);
+          console.log("✅ SA data inserted:", data.draw, "on", data.date);
         } else {
-          console.log("ℹ️  SA draw already exists, skipped insert:", data.draw);
+          console.log(
+            "ℹ️  SA draw already exists for this date, skipped insert:",
+            data.draw,
+            "on",
+            data.date
+          );
         }
       });
 

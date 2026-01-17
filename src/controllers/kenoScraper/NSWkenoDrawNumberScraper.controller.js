@@ -262,6 +262,9 @@ export const scrapeNSWKenobyGame = async () => {
 
       data.numbers = filterIncreasingNumbers(data.numbers);
 
+      // Create drawid for uniqueness checking (draw + date combination)
+      data.drawid = `${data.draw}_${data.date}`;
+
       // Save to DB with idempotent upsert to avoid E11000 duplicate errors
       await retry(
         async () => {
@@ -271,7 +274,7 @@ export const scrapeNSWKenobyGame = async () => {
           }
 
           const upsertRes = await KenoResult.updateOne(
-            { draw: String(data.draw) },
+            { drawid: data.drawid },
             { $setOnInsert: data },
             { upsert: true }
           );
@@ -285,11 +288,13 @@ export const scrapeNSWKenobyGame = async () => {
             Boolean(upsertRes.upserted);
 
           if (inserted) {
-            console.log("✅ NSW data inserted:", data.draw);
+            console.log("✅ NSW data inserted:", data.draw, "on", data.date);
           } else {
             console.log(
-              "ℹ️  NSW draw already exists or not inserted:",
-              data.draw
+              "ℹ️  NSW draw already exists for this date or not inserted:",
+              data.draw,
+              "on",
+              data.date
             );
           }
         },
