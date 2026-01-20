@@ -2,7 +2,7 @@ import User from "../../models/User.model.js";
 import Ticket from "../../models/ticket.model.js";
 import Payment from "../../models/Payment.js";
 import Notification from "../../models/Notification.js";
-import Favorite from "../../models/Favorite.model.js";
+import Alert from "../../models/Alert.model.js";
 import OtpToken from "../../models/otpToken.model.js";
 import sendEmail from "../../utils/sendEmail.js ";
 import jwt from "jsonwebtoken";
@@ -356,8 +356,8 @@ export const deleteAccount = async (req, res) => {
       // Delete user's notifications
       Notification.deleteMany({ userId }),
 
-      // Delete user's favorites
-      Favorite.deleteMany({ userId }),
+      // Delete user's alerts
+      Alert.deleteMany({ userId }),
     ]);
 
     // Finally, delete the user account

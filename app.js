@@ -31,6 +31,7 @@ const allowedOrigins = [
   "https://www.puntdata.com.au",
   "https://puntdata.com.au",
   "http://localhost:3000",
+  "http://localhost:5173/",
 ];
 
 app.use(
@@ -77,11 +78,11 @@ import historicalFrequencyRouter from "./src/routers/historicalFrequency.router.
 import NSWTrackSideRouter from "./src/routers/NSWTrackSideScraper.router.js";
 import VICTrackSideRouter from "./src/routers/VICTrackSideScraper.router.js";
 import ATCTrackSideRouter from "./src/routers/ATCTrackSideScraper.router.js";
-import favoritesRouter from "./src/routers/Favorites.router.js";
+// import favoritesRouter from "./src/routers/Favorites.router.js"; // REMOVED
 import kenoQuickStatsRouter from "./src/routers/kenoQuickStats.router.js";
 import trackSideQuickStatsRouter from "./src/routers/kenoQuickStats.router.js";
-import tracksideTopFeaturedRouter from "./src/routers/tracksideTopFeatured.router.js";
-import kenoTopFeaturedRouter from "./src/routers/kenoTopFeatured.router.js";
+// import tracksideTopFeaturedRouter from "./src/routers/tracksideTopFeatured.router.js"; // REMOVED
+// import kenoTopFeaturedRouter from "./src/routers/kenoTopFeatured.router.js"; // REMOVED
 import notificationRoutes from "./src/routers/notification.routes.js";
 import adminAnalyticsRoutes from "./src/models/admin.analytics.routes.js";
 import kenoLiveRoute from "./src/routers/kenoLive.route.js";
@@ -89,6 +90,11 @@ import kenoHotColdRoute from "./src/routers/kenoHotCold.route.js";
 import kenoDashboardRoute from "./src/routers/kenoDashboard.route.js";
 import resultsRoutes from "./src/routers/results.routes.js";
 import paymentRoutes from "./src/routers/payment.routes.js";
+
+// NEW ROUTES
+import alertsRouter from "./src/routers/Alerts.router.js";
+import tracksideAnalyticsRouter from "./src/routers/TracksideAnalytics.router.js";
+import kenoAnalyticsRouter from "./src/routers/KenoAnalytics.router.js";
 
 // API Routes
 app.use("/api/v1/payments", paymentRoutes);
@@ -114,11 +120,17 @@ app.use("/api/v1/historical-frequency", historicalFrequencyRouter);
 app.use("/api/v1/nsw-trackside", NSWTrackSideRouter);
 app.use("/api/v1/vic-trackside", VICTrackSideRouter);
 app.use("/api/v1/atc-trackside", ATCTrackSideRouter);
-app.use("/api/v1/favorites", favoritesRouter);
+// app.use("/api/v1/favorites", favoritesRouter); // REMOVED
+app.use("/api/v1/alerts", alertsRouter); // NEW
+app.use("/api/v1/trackside-analytics", tracksideAnalyticsRouter);
+app.use("/api/v1/keno-analytics", kenoAnalyticsRouter); // NEW
+
 app.use("/api/v1", kenoQuickStatsRouter);
 app.use("/api/v1", trackSideQuickStatsRouter);
-app.use("/api/v1/trackside", tracksideTopFeaturedRouter);
-app.use("/api/v1/keno", kenoTopFeaturedRouter);
+// app.use("/api/v1/trackside", tracksideTopFeaturedRouter); // REMOVED
+// app.use("/api/v1/keno", kenoTopFeaturedRouter); // REMOVED
+
+
 app.use("/api/v1/analytics", adminAnalyticsRoutes);
 
 // Catch-all handler: send back index.html for any non-API routes (SPA routing)
