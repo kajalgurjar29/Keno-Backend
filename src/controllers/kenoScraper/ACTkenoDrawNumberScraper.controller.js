@@ -390,10 +390,34 @@ export const scrapeACTKenoByGame = async () => {
             document.querySelector('input[data-id="check-results-date-input"]')
               ?.value || "";
 
+          const bonusText =
+            document.querySelector(
+              ".game-results-status__multiplier-value, .game-status-bonus-value, .bonus-value, .game-bonus"
+            )?.textContent || "";
+          const headsTailsText =
+            document.querySelector(
+              ".game-results-status__heads-tails-value, .game-status-heads-tails-value, .heads-tails-value, .heads-tails"
+            )?.textContent || "";
+
+          // Fallback search by label if direct selectors fail
+          const findByLabel = (label) => {
+            const elements = Array.from(document.querySelectorAll("div, span, p, dt, label"));
+            const match = elements.find(el => el.textContent.trim().toLowerCase().includes(label.toLowerCase()));
+            if (!match) return "";
+            const parent = match.parentElement;
+            return parent?.querySelector("button, .pill, [class*='value'], .status-value")?.textContent?.trim() ||
+              match.nextElementSibling?.textContent?.trim() || "";
+          };
+
+          const finalBonus = bonusText.trim() || findByLabel("bonus");
+          const finalHT = headsTailsText.trim() || findByLabel("heads or tails");
+
           return {
             draw: drawText.replace(/[^\d]/g, ""),
             date: dateText.trim(),
             numbers: balls,
+            bonus: finalBonus,
+            headsTailsLabel: finalHT,
           };
         })
         .catch((evalErr) => {
@@ -408,6 +432,23 @@ export const scrapeACTKenoByGame = async () => {
         });
 
       data.numbers = filterIncreasingNumbers(data.numbers);
+
+      // Calculate heads/tails stats
+      const headsCount = data.numbers.filter((n) => n >= 1 && n <= 40).length;
+      const tailsCount = data.numbers.filter((n) => n >= 41 && n <= 80).length;
+      data.heads = headsCount;
+      data.tails = tailsCount;
+
+      if (data.headsTailsLabel) {
+        data.result = data.headsTailsLabel;
+      } else {
+        if (headsCount > tailsCount) data.result = "Heads wins";
+        else if (tailsCount > headsCount) data.result = "Tails wins";
+        else data.result = "Evens";
+      }
+
+      // If bonus is empty, default to "REG" as seen in image
+      if (!data.bonus) data.bonus = "REG";
 
       // Create drawid for uniqueness checking (draw + date combination)
       data.drawid = `${data.draw}_${data.date}`;
@@ -430,7 +471,11 @@ export const scrapeACTKenoByGame = async () => {
               type: "KENO",
               location: "ACT",
               draw: data.draw,
-              numbers: data.numbers
+              numbers: data.numbers,
+              heads: data.heads,
+              tails: data.tails,
+              result: data.result,
+              bonus: data.bonus
             });
             console.log("📡 ACT Keno: Emitted 'newResult' socket event");
           } catch (socketErr) {

@@ -254,14 +254,64 @@ export const scrapeNSWKenobyGame = async () => {
           document.querySelector('input[data-id="check-results-date-input"]')
             ?.value || "";
 
+        // More robust search for Heads/Tails and Bonus
+        const findValueByLabel = (labelText) => {
+          const labels = Array.from(document.querySelectorAll("div, span, label, p, dt"));
+          const targetLabel = labels.find((el) =>
+            el.textContent.trim().toLowerCase().includes(labelText.toLowerCase())
+          );
+          if (targetLabel) {
+            // Try to find the value in common nearby structures (sibling, parent's child, etc.)
+            const parent = targetLabel.parentElement;
+            if (parent) {
+              const value = parent.querySelector(".value, [class*='value'], .status-value, button, .pill")?.textContent;
+              if (value) return value.trim();
+
+              // Fallback to next sibling
+              const next = targetLabel.nextElementSibling;
+              if (next) return next.textContent.trim();
+            }
+          }
+          return "";
+        };
+
+        const bonusText =
+          document.querySelector(
+            ".game-results-status__multiplier-value, .game-status-bonus-value, .bonus-value, .game-bonus"
+          )?.textContent || findValueByLabel("bonus");
+
+        const headsTailsText =
+          document.querySelector(
+            ".game-results-status__heads-tails-value, .game-status-heads-tails-value, .heads-tails-value, .heads-tails"
+          )?.textContent || findValueByLabel("heads or tails");
+
         return {
           draw: drawText.replace(/[^\d]/g, ""),
           date: dateText.trim(),
           numbers: balls,
+          bonus: bonusText.trim(),
+          headsTailsLabel: headsTailsText.trim(),
         };
       });
 
       data.numbers = filterIncreasingNumbers(data.numbers);
+
+      // Calculate heads/tails stats
+      const headsCount = data.numbers.filter((n) => n >= 1 && n <= 40).length;
+      const tailsCount = data.numbers.filter((n) => n >= 41 && n <= 80).length;
+      data.heads = headsCount;
+      data.tails = tailsCount;
+
+      if (data.headsTailsLabel) {
+        data.result = data.headsTailsLabel;
+      } else {
+        if (headsCount > tailsCount) data.result = "Heads wins";
+        else if (tailsCount > headsCount) data.result = "Tails wins";
+        else data.result = "Evens";
+      }
+
+      // If bonus is empty, default to "REG" as seen in image
+      if (!data.bonus) data.bonus = "REG";
 
       // Create drawid for uniqueness checking (draw + date combination)
       data.drawid = `${data.draw}_${data.date}`;
@@ -310,7 +360,11 @@ export const scrapeNSWKenobyGame = async () => {
           type: "KENO",
           location: "NSW",
           draw: data.draw,
-          numbers: data.numbers
+          numbers: data.numbers,
+          heads: data.heads,
+          tails: data.tails,
+          result: data.result,
+          bonus: data.bonus
         });
         console.log("📡 NSW Keno: Emitted 'newResult' socket event");
       } catch (socketErr) {

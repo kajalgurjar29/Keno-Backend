@@ -5,6 +5,10 @@ const KenoResultSchema = new mongoose.Schema({
   date: { type: String, required: true },
   drawid: { type: String, required: true, unique: true },
   numbers: [{ type: Number, required: true }],
+  heads: { type: Number },
+  tails: { type: Number },
+  result: { type: String }, // "Heads", "Tails", or "Evens"
+  bonus: { type: String },  // "REG", "x2", "x4", etc.
   location: { type: String, default: "NSW", required: true },
   createdAt: { type: Date, default: Date.now },
 });

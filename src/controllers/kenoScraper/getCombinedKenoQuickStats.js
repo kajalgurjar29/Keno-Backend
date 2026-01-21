@@ -77,10 +77,44 @@ export const getCombinedKenoQuickStats = async (req, res) => {
       totalRaces: totalDraws,
     }));
 
+    // Aggregation for Heads/Tails/Evens counts
+    const headsTailsPipeline = [
+      {
+        $group: {
+          _id: "$result",
+          count: { $sum: 1 },
+        },
+      },
+    ];
+
+    const headsTailsResults = await Promise.all(
+      MODELS.map((model) => model.aggregate(headsTailsPipeline))
+    );
+
+    const headsTailsSummary = {
+      "Heads wins": 0,
+      "Tails wins": 0,
+      Evens: 0,
+    };
+
+    headsTailsResults.flat().forEach((item) => {
+      if (item._id && headsTailsSummary[item._id] !== undefined) {
+        headsTailsSummary[item._id] += item.count;
+      }
+    });
+
     res.json({
       success: true,
       totalRaces: totalDraws,
       stats: finalStats,
+      headsTailsStats: {
+        headsWins: headsTailsSummary["Heads wins"],
+        tailsWins: headsTailsSummary["Tails wins"],
+        evens: headsTailsSummary["Evens"],
+        headsWinsPercent: totalDraws ? ((headsTailsSummary["Heads wins"] / totalDraws) * 100).toFixed(2) : "0.00",
+        tailsWinsPercent: totalDraws ? ((headsTailsSummary["Tails wins"] / totalDraws) * 100).toFixed(2) : "0.00",
+        evensPercent: totalDraws ? ((headsTailsSummary["Evens"] / totalDraws) * 100).toFixed(2) : "0.00",
+      },
     });
   } catch (err) {
     console.error("Keno quick stats error:", err);
@@ -233,6 +267,31 @@ export const getKenoGraphStats = async (req, res) => {
           data: drawTrend,
           xAxis: "date",
           yAxis: "draws",
+        },
+
+        // Pie chart: Heads/Tails/Evens distribution
+        headsTailsDistribution: {
+          type: "pie",
+          title: "Heads, Tails & Evens Distribution",
+          data: await (async () => {
+            const headsTailsResults = await Promise.all(
+              MODELS.map((model) =>
+                model.aggregate([
+                  { $group: { _id: "$result", count: { $sum: 1 } } },
+                ])
+              )
+            );
+            const summary = { "Heads wins": 0, "Tails wins": 0, Evens: 0 };
+            headsTailsResults.flat().forEach((item) => {
+              if (item._id && summary[item._id] !== undefined)
+                summary[item._id] += item.count;
+            });
+            return Object.entries(summary).map(([name, value]) => ({
+              name,
+              value,
+              percentage: totalDraws ? ((value / totalDraws) * 100).toFixed(1) : "0",
+            }));
+          })(),
         },
 
         // Summary cards

@@ -28,13 +28,11 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const server = createServer(app);
 
-
-
 const allowedOrigins = [
   "https://www.puntdata.com.au",
   "https://puntdata.com.au",
   "http://localhost:3000",
-  "http://localhost:5173/",
+  "http://localhost:5173",
 ];
 
 const io = initSocket(server, allowedOrigins);
@@ -134,7 +132,6 @@ app.use("/api/v1", kenoQuickStatsRouter);
 app.use("/api/v1", trackSideQuickStatsRouter);
 // app.use("/api/v1/trackside", tracksideTopFeaturedRouter); // REMOVED
 // app.use("/api/v1/keno", kenoTopFeaturedRouter); // REMOVED
-
 
 app.use("/api/v1/analytics", adminAnalyticsRoutes);
 
