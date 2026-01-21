@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { connectDB } from "./src/db/db.config.js";
 import { createServer } from "http";
+import { initSocket } from "./src/utils/socketUtils.js";
 
 dotenv.config({ path: "./.env" });
 
@@ -27,12 +28,16 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const server = createServer(app);
 
+
+
 const allowedOrigins = [
   "https://www.puntdata.com.au",
   "https://puntdata.com.au",
   "http://localhost:3000",
   "http://localhost:5173/",
 ];
+
+const io = initSocket(server, allowedOrigins);
 
 app.use(
   cors({

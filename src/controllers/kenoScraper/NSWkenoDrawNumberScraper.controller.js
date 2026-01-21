@@ -7,6 +7,7 @@ import { execSync } from "child_process";
 import { getChromiumPath } from "../../utils/chromiumPath.js";
 import KenoResult from "../../models/NSWkenoDrawResult.model.js";
 import util from "util";
+import { getIO } from "../../utils/socketUtils.js";
 const execAsync = util.promisify(exec);
 import { exec } from "child_process";
 
@@ -135,7 +136,7 @@ const killZombieChromium = async () => {
       await execAsync(
         "taskkill /F /IM chrome.exe /T || taskkill /F /IM chromium.exe /T"
       );
-    } catch (_) {}
+    } catch (_) { }
   }
 };
 
@@ -183,8 +184,8 @@ export const scrapeNSWKenobyGame = async () => {
 
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-        "AppleWebKit/537.36 (KHTML, like Gecko) " +
-        "Chrome/124.0.0.0 Safari/537.36"
+      "AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Chrome/124.0.0.0 Safari/537.36"
     );
     await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
 
@@ -301,6 +302,20 @@ export const scrapeNSWKenobyGame = async () => {
         3,
         2000
       );
+
+      // Socket Emission for new results
+      try {
+        const io = getIO();
+        io.emit("newResult", {
+          type: "KENO",
+          location: "NSW",
+          draw: data.draw,
+          numbers: data.numbers
+        });
+        console.log("📡 NSW Keno: Emitted 'newResult' socket event");
+      } catch (socketErr) {
+        console.warn("⚠️ NSW Keno: Socket emit failed:", socketErr.message);
+      }
 
       await safeClose(browser);
       return data;

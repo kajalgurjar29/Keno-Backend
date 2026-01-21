@@ -9,6 +9,7 @@ import { getChromiumPath } from "../../utils/chromiumPath.js";
 import TrackSideResult from "../../models/TrackSideResult.ACT.model.js";
 import { exec } from "child_process";
 import util from "util";
+import { getIO } from "../../utils/socketUtils.js";
 const execAsync = util.promisify(exec);
 
 // ✅ Use stealth plugin but disable problematic evasions
@@ -103,8 +104,8 @@ const launchBrowser = async (proxyUrl, proxyUser, proxyPass) => {
 
   await page.setUserAgent(
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-      "AppleWebKit/537.36 (KHTML, like Gecko) " +
-      "Chrome/124.0.0.0 Safari/537.36"
+    "AppleWebKit/537.36 (KHTML, like Gecko) " +
+    "Chrome/124.0.0.0 Safari/537.36"
   );
   await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
 
@@ -219,7 +220,7 @@ export const scrapeTrackSideResults = async () => {
                 });
               }
             }
-          } catch (e) {}
+          } catch (e) { }
         });
 
         return gameResults;
@@ -304,14 +305,29 @@ export const scrapeTrackSideResults = async () => {
 
           if (savedDoc) {
             console.log(
-              `✅ ACT: Saved ${
-                result.gameName
+              `✅ ACT: Saved ${result.gameName
               } - Numbers: ${result.numbers.join(",")}`
             );
             savedCount++;
           }
         } catch (dbErr) {
           console.error(`❌ ACT: DB Error saving ${result.gameName}:`, dbErr);
+        }
+      }
+
+      // Socket Emission for new results
+      if (savedCount > 0) {
+        try {
+          const io = getIO();
+          io.emit("newResult", {
+            type: "TRACKSIDE",
+            location: "ACT",
+            count: savedCount,
+            latestGame: results[0]
+          });
+          console.log("📡 ACT: Emitted 'newResult' socket event");
+        } catch (socketErr) {
+          console.warn("⚠️ ACT: Socket emit failed:", socketErr.message);
         }
       }
 

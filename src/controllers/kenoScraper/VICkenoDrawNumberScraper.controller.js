@@ -7,6 +7,7 @@ import { execSync } from "child_process";
 import { getChromiumPath } from "../../utils/chromiumPath.js";
 import KenoResult from "../../models/VICkenoDrawResult.model.js";
 import util from "util";
+import { getIO } from "../../utils/socketUtils.js";
 const execAsync = util.promisify(exec);
 import { exec } from "child_process";
 
@@ -170,7 +171,7 @@ const killZombieChromium = async () => {
       await execPromise(
         "taskkill /F /IM chrome.exe /T || taskkill /F /IM chromium.exe /T"
       );
-    } catch (_) {}
+    } catch (_) { }
   }
 };
 
@@ -212,8 +213,8 @@ export const scrapeVICKenoByGame = async () => {
 
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-        "AppleWebKit/537.36 (KHTML, like Gecko) " +
-        "Chrome/124.0.0.0 Safari/537.36"
+      "AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Chrome/124.0.0.0 Safari/537.36"
     );
     await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
 
@@ -283,6 +284,20 @@ export const scrapeVICKenoByGame = async () => {
         );
         if (upsertRes.upsertedCount && upsertRes.upsertedCount > 0) {
           console.log("✅ VIC data inserted:", data.draw, "on", data.date);
+
+          // Socket Emission for new results
+          try {
+            const io = getIO();
+            io.emit("newResult", {
+              type: "KENO",
+              location: "VIC",
+              draw: data.draw,
+              numbers: data.numbers
+            });
+            console.log("📡 VIC Keno: Emitted 'newResult' socket event");
+          } catch (socketErr) {
+            console.warn("⚠️ VIC Keno: Socket emit failed:", socketErr.message);
+          }
         } else {
           console.log(
             "ℹ️  VIC draw already exists for this date, skipped insert:",
