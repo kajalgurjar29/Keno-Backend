@@ -123,7 +123,7 @@ export const createAlert = async (req, res) => {
 
         const newAlert = await Alert.create({
             userId,
-            gameType: gameType?.toUpperCase(),
+            gameType: gameType?.toLowerCase(),
             betType,
             combinations,
             alertType,
@@ -131,11 +131,11 @@ export const createAlert = async (req, res) => {
         });
 
         const alertResponse = newAlert.toObject();
-        // Since we have 'uppercase: true' in model, it should already be uppercase, 
+        // Since we have 'lowercase: true' in model, it should already be lowercase, 
         // but let's be safe for the response.
-        alertResponse.gameType = alertResponse.gameType.toUpperCase();
+        if (alertResponse.gameType) alertResponse.gameType = alertResponse.gameType.toLowerCase();
 
-        if (alertResponse.gameType === "KENO") {
+        if (alertResponse.gameType === "keno") {
             delete alertResponse.combinations;
             delete alertResponse.betType;
         } else {
@@ -160,10 +160,10 @@ export const getUserAlerts = async (req, res) => {
 
         for (const alert of alerts) {
             const alertObj = alert.toObject();
-            // Ensure gameType is uppercase in response
-            if (alertObj.gameType) alertObj.gameType = alertObj.gameType.toUpperCase();
+            // Ensure gameType is lowercase in response
+            if (alertObj.gameType) alertObj.gameType = alertObj.gameType.toLowerCase();
 
-            if (alertObj.gameType === "TRACKSIDE") {
+            if (alertObj.gameType === "trackside") {
                 const droughtData = await calculateTracksideDrought(alertObj.betType, alertObj.combinations);
                 delete alertObj.alertType;
                 delete alertObj.targetValue;
@@ -202,7 +202,7 @@ export const updateAlert = async (req, res) => {
         const updateData = req.body;
 
         if (updateData.gameType) {
-            updateData.gameType = updateData.gameType.toUpperCase();
+            updateData.gameType = updateData.gameType.toLowerCase();
         }
 
         const updatedAlert = await Alert.findByIdAndUpdate(alertId, updateData, { new: true });

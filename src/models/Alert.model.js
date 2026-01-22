@@ -9,25 +9,25 @@ const AlertSchema = new mongoose.Schema(
     },
     gameType: {
       type: String,
-      enum: ["TRACKSIDE", "KENO"],
+      enum: ["trackside", "keno"],
       required: true,
-      uppercase: true,
+      lowercase: true,
       trim: true,
     },
     // For Trackside
     betType: {
       type: String,
       enum: ["Quinella", "Exacta", "Trifecta", "First Four"],
-      required: function () { return this.gameType === "TRACKSIDE"; }
+      required: function () { return this.gameType === "trackside"; }
     },
     combinations: {
       type: [Number], // e.g. [1, 2, 3]
-      required: function () { return this.gameType === "TRACKSIDE"; }
+      required: function () { return this.gameType === "trackside"; }
     },
     // For Keno
     alertType: {
       type: String, // e.g. "40-game number drought"
-      required: function () { return this.gameType === "KENO"; }
+      required: function () { return this.gameType === "keno"; }
     },
     targetValue: {
       type: Number, // e.g. 40 (drought threshold) or specific number
