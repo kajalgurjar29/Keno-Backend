@@ -123,7 +123,7 @@ export const createAlert = async (req, res) => {
 
         const newAlert = await Alert.create({
             userId,
-            gameType,
+            gameType: gameType?.toUpperCase(),
             betType,
             combinations,
             alertType,
@@ -131,7 +131,11 @@ export const createAlert = async (req, res) => {
         });
 
         const alertResponse = newAlert.toObject();
-        if (gameType === "KENO") {
+        // Since we have 'uppercase: true' in model, it should already be uppercase, 
+        // but let's be safe for the response.
+        alertResponse.gameType = alertResponse.gameType.toUpperCase();
+
+        if (alertResponse.gameType === "KENO") {
             delete alertResponse.combinations;
             delete alertResponse.betType;
         } else {
@@ -155,9 +159,12 @@ export const getUserAlerts = async (req, res) => {
         const kenoAlerts = [];
 
         for (const alert of alerts) {
-            if (alert.gameType === "TRACKSIDE") {
-                const droughtData = await calculateTracksideDrought(alert.betType, alert.combinations);
-                const alertObj = alert.toObject();
+            const alertObj = alert.toObject();
+            // Ensure gameType is uppercase in response
+            if (alertObj.gameType) alertObj.gameType = alertObj.gameType.toUpperCase();
+
+            if (alertObj.gameType === "TRACKSIDE") {
+                const droughtData = await calculateTracksideDrought(alertObj.betType, alertObj.combinations);
                 delete alertObj.alertType;
                 delete alertObj.targetValue;
                 tracksideAlerts.push({
@@ -165,8 +172,7 @@ export const getUserAlerts = async (req, res) => {
                     ...droughtData,
                 });
             } else {
-                const droughtData = await calculateKenoDrought(alert.alertType, alert.targetValue);
-                const alertObj = alert.toObject();
+                const droughtData = await calculateKenoDrought(alertObj.alertType, alertObj.targetValue);
                 delete alertObj.combinations;
                 delete alertObj.betType;
                 kenoAlerts.push({
@@ -194,6 +200,10 @@ export const updateAlert = async (req, res) => {
     try {
         const { alertId } = req.params;
         const updateData = req.body;
+
+        if (updateData.gameType) {
+            updateData.gameType = updateData.gameType.toUpperCase();
+        }
 
         const updatedAlert = await Alert.findByIdAndUpdate(alertId, updateData, { new: true });
 
