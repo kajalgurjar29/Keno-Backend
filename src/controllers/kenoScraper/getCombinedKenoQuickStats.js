@@ -94,7 +94,7 @@ export const getCombinedKenoQuickStats = async (req, res) => {
     const headsTailsSummary = {
       "Heads wins": 0,
       "Tails wins": 0,
-      Evens: 0,
+      "Evens wins": 0,
     };
 
     headsTailsResults.flat().forEach((item) => {
@@ -110,10 +110,10 @@ export const getCombinedKenoQuickStats = async (req, res) => {
       headsTailsStats: {
         headsWins: headsTailsSummary["Heads wins"],
         tailsWins: headsTailsSummary["Tails wins"],
-        evens: headsTailsSummary["Evens"],
+        evensWins: headsTailsSummary["Evens wins"],
         headsWinsPercent: totalDraws ? ((headsTailsSummary["Heads wins"] / totalDraws) * 100).toFixed(2) : "0.00",
         tailsWinsPercent: totalDraws ? ((headsTailsSummary["Tails wins"] / totalDraws) * 100).toFixed(2) : "0.00",
-        evensPercent: totalDraws ? ((headsTailsSummary["Evens"] / totalDraws) * 100).toFixed(2) : "0.00",
+        evensWinsPercent: totalDraws ? ((headsTailsSummary["Evens wins"] / totalDraws) * 100).toFixed(2) : "0.00",
       },
     });
   } catch (err) {
@@ -281,7 +281,7 @@ export const getKenoGraphStats = async (req, res) => {
                 ])
               )
             );
-            const summary = { "Heads wins": 0, "Tails wins": 0, Evens: 0 };
+            const summary = { "Heads wins": 0, "Tails wins": 0, "Evens wins": 0 };
             headsTailsResults.flat().forEach((item) => {
               if (item._id && summary[item._id] !== undefined)
                 summary[item._id] += item.count;

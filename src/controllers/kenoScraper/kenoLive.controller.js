@@ -60,3 +60,41 @@ export const getKenoDrawHistory = async (req, res) => {
     });
   }
 };
+
+export const getKenoHeadsTailsHistory = async (req, res) => {
+  try {
+    const { location } = req.query; // Optional filter by state
+    const limit = parseInt(req.query.limit) || 20;
+
+    let query = {};
+    if (location) {
+      query.location = location;
+    }
+
+    // We can fetch from all models if needed, but for a "Table" usually we show per state or latest overall.
+    // Let's stick to the current model for now or import others.
+    // Actually, KenoResult in this file is NSW. 
+
+    const results = await KenoResult.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit);
+
+    const tableData = results.map((item) => ({
+      draw: item.draw,
+      date: item.date,
+      winner: item.result || (item.heads > item.tails ? "Heads wins" : item.tails > item.heads ? "Tails wins" : "Evens wins"),
+      headsCount: item.heads,
+      tailsCount: item.tails,
+      bonus: item.bonus || "REG",
+      numbers: item.numbers
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: tableData,
+    });
+  } catch (err) {
+    console.error("❌ getKenoHeadsTailsHistory error:", err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};

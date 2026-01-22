@@ -298,16 +298,21 @@ export const scrapeVICKenoByGame = async () => {
       data.heads = headsCount;
       data.tails = tailsCount;
 
-      if (data.headsTailsLabel) {
-        data.result = data.headsTailsLabel;
-      } else {
-        if (headsCount > tailsCount) data.result = "Heads wins";
-        else if (tailsCount > headsCount) data.result = "Tails wins";
-        else data.result = "Evens";
-      }
+      if (headsCount > tailsCount) data.result = "Heads wins";
+      else if (tailsCount > headsCount) data.result = "Tails wins";
+      else data.result = "Evens wins";
 
-      // If bonus is empty, default to "REG" as seen in image
-      if (!data.bonus) data.bonus = "REG";
+      // Sanitizing bonus to avoid "junk text" from login/account sections
+      const sanitizeBonus = (text) => {
+        if (!text) return "REG";
+        const cleaned = text.trim();
+        if (cleaned.length > 10 || /login|account|password|enter|details|ready|ended/i.test(cleaned)) {
+          return "REG";
+        }
+        return cleaned || "REG";
+      };
+
+      data.bonus = sanitizeBonus(data.bonus);
 
       // Create drawid for uniqueness checking (draw + date combination)
       data.drawid = `${data.draw}_${data.date}`;

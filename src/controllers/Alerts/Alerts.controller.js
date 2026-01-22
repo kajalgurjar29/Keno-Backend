@@ -189,3 +189,38 @@ export const getUserAlerts = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+export const updateAlert = async (req, res) => {
+    try {
+        const { alertId } = req.params;
+        const updateData = req.body;
+
+        const updatedAlert = await Alert.findByIdAndUpdate(alertId, updateData, { new: true });
+
+        if (!updatedAlert) {
+            return res.status(404).json({ success: false, message: "Alert not found" });
+        }
+
+        res.json({ success: true, alert: updatedAlert });
+    } catch (error) {
+        console.error("Update Alert Error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const deleteAlert = async (req, res) => {
+    try {
+        const { alertId } = req.params;
+
+        const deletedAlert = await Alert.findByIdAndDelete(alertId);
+
+        if (!deletedAlert) {
+            return res.status(404).json({ success: false, message: "Alert not found" });
+        }
+
+        res.json({ success: true, message: "Alert deleted successfully" });
+    } catch (error) {
+        console.error("Delete Alert Error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
