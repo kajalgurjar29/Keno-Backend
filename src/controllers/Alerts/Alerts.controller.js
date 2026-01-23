@@ -150,6 +150,68 @@ export const createAlert = async (req, res) => {
     }
 };
 
+export const getTracksideAlerts = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const alerts = await Alert.find({ userId, gameType: "trackside" });
+
+        const tracksideAlerts = [];
+
+        for (const alert of alerts) {
+            const alertObj = alert.toObject();
+            if (alertObj.gameType) alertObj.gameType = alertObj.gameType.toLowerCase();
+
+            const droughtData = await calculateTracksideDrought(alertObj.betType, alertObj.combinations);
+            delete alertObj.alertType;
+            delete alertObj.targetValue;
+
+            tracksideAlerts.push({
+                ...alertObj,
+                ...droughtData,
+            });
+        }
+
+        res.json({
+            success: true,
+            data: tracksideAlerts
+        });
+    } catch (error) {
+        console.error("Get Trackside Alerts Error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const getKenoAlerts = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const alerts = await Alert.find({ userId, gameType: "keno" });
+
+        const kenoAlerts = [];
+
+        for (const alert of alerts) {
+            const alertObj = alert.toObject();
+            if (alertObj.gameType) alertObj.gameType = alertObj.gameType.toLowerCase();
+
+            const droughtData = await calculateKenoDrought(alertObj.alertType, alertObj.targetValue);
+            delete alertObj.combinations;
+            delete alertObj.betType;
+
+            kenoAlerts.push({
+                ...alertObj,
+                ...droughtData,
+            });
+        }
+
+        res.json({
+            success: true,
+            data: kenoAlerts
+        });
+    } catch (error) {
+        console.error("Get Keno Alerts Error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 export const getUserAlerts = async (req, res) => {
     try {
         const { userId } = req.params;
