@@ -12,6 +12,7 @@
   "author": "kajal Gurjar",
   "license": "ISC",
   "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
     "axios": "^1.11.0",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^2.4.3",
@@ -35,7 +36,6 @@
     "multer": "^1.4.5-lts.1",
     "node-cron": "^3.0.3",
     "node-schedule": "^2.1.1",
-    "nodemailer": "^6.10.1",
     "otp-generator": "^4.0.1",
     "puppeteer": "^24.19.0",
     "puppeteer-core": "^24.19.0",

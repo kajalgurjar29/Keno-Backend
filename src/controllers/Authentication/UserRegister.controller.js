@@ -4,7 +4,7 @@ import Payment from "../../models/Payment.js";
 import Notification from "../../models/Notification.js";
 import Alert from "../../models/Alert.model.js";
 import OtpToken from "../../models/otpToken.model.js";
-import sendEmail from "../../utils/sendEmail.js ";
+import sendEmail from "../../utils/sendEmail.js";
 import jwt from "jsonwebtoken";
 
 // @desc Register a new user
@@ -58,11 +58,29 @@ export const registerUser = async (req, res) => {
     });
 
     // 5. Send OTP email
-    await sendEmail(
-      email,
-      "Your OTP Code",
-      `Hello ${fullName},Your OTP code is:${otp} This code will expire in 10 minutes.`
-    );
+    const subject = "Welcome to Punt Mate - Your OTP Code";
+    const textMessage = `Hello ${fullName}, Your OTP code is: ${otp}. This code will expire in 10 minutes.`;
+    const htmlMessage = `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 12px; background-color: #ffffff;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #1a1a1a; margin: 0; font-size: 28px; letter-spacing: -0.5px;">Punt <span style="color: #0066ff;">Mate</span></h1>
+        </div>
+        <div style="padding: 20px; background-color: #f8f9fa; border-radius: 8px; text-align: center;">
+          <p style="font-size: 16px; color: #444; margin-top: 0;">Hello <strong>${fullName}</strong>,</p>
+          <p style="font-size: 16px; color: #444;">Thank you for joining Punt Mate! Use the code below to verify your email address:</p>
+          <div style="margin: 30px 0;">
+            <span style="font-size: 36px; font-weight: 700; color: #0066ff; letter-spacing: 5px; background: #fff; padding: 10px 25px; border-radius: 8px; border: 2px dashed #0066ff;">${otp}</span>
+          </div>
+          <p style="font-size: 14px; color: #888;">This code will expire in <strong>10 minutes</strong>.</p>
+        </div>
+        <div style="margin-top: 30px; text-align: center; border-top: 1px solid #eee; padding-top: 20px;">
+          <p style="font-size: 12px; color: #aaa;">If you didn't create an account with Punt Mate, you can safely ignore this email.</p>
+          <p style="font-size: 12px; color: #aaa;">&copy; 2026 Punt Mate. All rights reserved.</p>
+        </div>
+      </div>
+    `;
+
+    await sendEmail(email, subject, textMessage, htmlMessage);
 
     console.log("OTP sent to:", email);
 

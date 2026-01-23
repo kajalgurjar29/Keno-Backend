@@ -32,14 +32,27 @@ export const requestPasswordReset = async (req, res) => {
     await OtpToken.create({ userId: user._id, otp, expiry });
 
     // 4. Send email with OTP
-    const subject = "Password Reset Request";
-    const message = `
-      Hello ${user.fullName},
-      You requested a password reset. Use the OTP below to reset your password:${otp}
-      This OTP will expire in 10 minutes
-      If you didn’t request this, you can ignore this email.
+    const subject = "Password Reset Request - Punt Mate";
+    const textMessage = `Hello ${user.fullName}, You requested a password reset. Your OTP is: ${otp}. This will expire in 10 minutes.`;
+    const htmlMessage = `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 12px; background-color: #ffffff;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #1a1a1a; margin: 0; font-size: 28px; letter-spacing: -0.5px;">Punt <span style="color: #0066ff;">Mate</span></h1>
+        </div>
+        <div style="padding: 20px; background-color: #fff9f0; border-radius: 8px; text-align: center; border: 1px solid #ffeeba;">
+          <p style="font-size: 16px; color: #444; margin-top: 0;">Hello <strong>${user.fullName}</strong>,</p>
+          <p style="font-size: 16px; color: #444;">We received a request to reset your password. Use the code below to proceed:</p>
+          <div style="margin: 30px 0;">
+            <span style="font-size: 36px; font-weight: 700; color: #ff9900; letter-spacing: 5px; background: #fff; padding: 10px 25px; border-radius: 8px; border: 2px dashed #ff9900;">${otp}</span>
+          </div>
+          <p style="font-size: 14px; color: #888;">This code will expire in <strong>10 minutes</strong>. If you didn't request this, please secure your account.</p>
+        </div>
+        <div style="margin-top: 30px; text-align: center; border-top: 1px solid #eee; padding-top: 20px;">
+          <p style="font-size: 12px; color: #aaa;">&copy; 2026 Punt Mate. All rights reserved.</p>
+        </div>
+      </div>
     `;
-    await sendEmail(user.email, subject, message);
+    await sendEmail(user.email, subject, textMessage, htmlMessage);
 
     console.log(`📧 Reset OTP sent to ${email}: ${otp}`);
 
@@ -130,13 +143,28 @@ export const requestPinReset = async (req, res) => {
 
     await OtpToken.create({ userId: user._id, otp, expiry });
 
-    await sendEmail(
-      user.email,
-      "PIN Reset Request",
-      `Hello ${user.fullName},
-Your OTP for PIN reset is: ${otp}
-This OTP will expire in 10 minutes.`
-    );
+    const subject = "PIN Reset Request - Punt Mate";
+    const textMessage = `Hello ${user.fullName}, Your OTP for PIN reset is: ${otp}. This will expire in 10 minutes.`;
+    const htmlMessage = `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 12px; background-color: #ffffff;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #1a1a1a; margin: 0; font-size: 28px; letter-spacing: -0.5px;">Punt <span style="color: #0066ff;">Mate</span></h1>
+        </div>
+        <div style="padding: 20px; background-color: #f0f7ff; border-radius: 8px; text-align: center; border: 1px solid #bee5eb;">
+          <p style="font-size: 16px; color: #444; margin-top: 0;">Hello <strong>${user.fullName}</strong>,</p>
+          <p style="font-size: 16px; color: #444;">We received a request to reset your PIN. Use the code below to proceed:</p>
+          <div style="margin: 30px 0;">
+            <span style="font-size: 36px; font-weight: 700; color: #0066ff; letter-spacing: 5px; background: #fff; padding: 10px 25px; border-radius: 8px; border: 2px dashed #0066ff;">${otp}</span>
+          </div>
+          <p style="font-size: 14px; color: #888;">This code will expire in <strong>10 minutes</strong>.</p>
+        </div>
+        <div style="margin-top: 30px; text-align: center; border-top: 1px solid #eee; padding-top: 20px;">
+          <p style="font-size: 12px; color: #aaa;">&copy; 2026 Punt Mate. All rights reserved.</p>
+        </div>
+      </div>
+    `;
+
+    await sendEmail(user.email, subject, textMessage, htmlMessage);
 
     res.status(200).json({ message: "OTP sent for PIN reset" });
   } catch (error) {
@@ -190,7 +218,7 @@ export const setNewPin = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    user.pin = newPin; 
+    user.pin = newPin;
     await user.save();
 
     res.status(200).json({

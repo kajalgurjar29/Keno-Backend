@@ -1,28 +1,34 @@
-import nodemailer from "nodemailer";
+import sgMail from "@sendgrid/mail";
 import dotenv from "dotenv";
 dotenv.config();
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USERNAME,
-    pass: process.env.EMAIL_PASSWORD,
-  },
-});
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-const sendEmail = async (to, subject, text) => {
-  const mailOptions = {
-    from: process.env.EMAIL_USERNAME,
+/**
+ * Sends an email using SendGrid
+ * @param {string} to - Recipient email address
+ * @param {string} subject - Email subject
+ * @param {string} text - Plain text content
+ * @param {string} html - HTML content (optional)
+ */
+const sendEmail = async (to, subject, text, html) => {
+  const msg = {
     to,
+    from: process.env.FROM_EMAIL, // Must be a verified sender in SendGrid
     subject,
     text,
+    html: html || `<div>${text}</div>`,
   };
 
   try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log("Email sent:", info.response);
+    const response = await sgMail.send(msg);
+    console.log("Email sent successfully via SendGrid:", response[0].statusCode);
+    return response;
   } catch (error) {
-    console.error("Error sending email:", error.message);
+    console.error("Error sending email via SendGrid:", error.message);
+    if (error.response) {
+      console.error(error.response.body);
+    }
     throw error;
   }
 };
