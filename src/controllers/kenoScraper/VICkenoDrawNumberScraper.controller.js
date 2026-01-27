@@ -8,6 +8,7 @@ import { getChromiumPath } from "../../utils/chromiumPath.js";
 import KenoResult from "../../models/VICkenoDrawResult.model.js";
 import util from "util";
 import { getIO } from "../../utils/socketUtils.js";
+import eventBus, { EVENTS } from "../../utils/eventBus.js";
 const execAsync = util.promisify(exec);
 import { exec } from "child_process";
 
@@ -341,6 +342,13 @@ export const scrapeVICKenoByGame = async () => {
               bonus: data.bonus
             });
             console.log("📡 VIC Keno: Emitted 'newResult' socket event");
+
+            // 🆕 Emit Background Event for Alert Matching & Notifications
+            eventBus.emit(EVENTS.NEW_RESULT_PUBLISHED, {
+              type: "KENO",
+              location: "VIC",
+              data: data
+            });
           } catch (socketErr) {
             console.warn("⚠️ VIC Keno: Socket emit failed:", socketErr.message);
           }

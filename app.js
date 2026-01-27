@@ -7,12 +7,16 @@ import dotenv from "dotenv";
 import { connectDB } from "./src/db/db.config.js";
 import { createServer } from "http";
 import { initSocket } from "./src/utils/socketUtils.js";
+import { initializeServices } from "./src/services/index.js";
 
 dotenv.config({ path: "./.env" });
 
 // Connect to DB first, then load scheduler so jobs run after DB is ready
 connectDB()
   .then(() => {
+    // Initialize Notification System & Workers
+    initializeServices();
+
     import("./src/middleware/schedular.middleware.js")
       .then(() => console.log("Scheduler loaded"))
       .catch((e) => console.error("Failed loading scheduler:", e));

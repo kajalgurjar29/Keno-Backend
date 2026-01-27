@@ -10,6 +10,7 @@ import TrackSideResult from "../../models/TrackSideResult.NSW.model.js";
 import { exec } from "child_process";
 import util from "util";
 import { getIO } from "../../utils/socketUtils.js";
+import eventBus, { EVENTS } from "../../utils/eventBus.js";
 const execAsync = util.promisify(exec);
 
 // ✅ Use stealth plugin but disable problematic evasions
@@ -284,6 +285,13 @@ export const scrapeTrackSideResults = async () => {
             latestGame: results[0]
           });
           console.log("📡 NSW: Emitted 'newResult' socket event");
+
+          // 🆕 Emit Background Event for Alert Matching & Notifications
+          eventBus.emit(EVENTS.NEW_RESULT_PUBLISHED, {
+            type: "TRACKSIDE",
+            location: "NSW",
+            data: results[0] // latest game
+          });
         } catch (socketErr) {
           console.warn("⚠️ NSW: Socket emit failed:", socketErr.message);
         }

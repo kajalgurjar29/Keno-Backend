@@ -6,6 +6,8 @@ import Alert from "../../models/Alert.model.js";
 import OtpToken from "../../models/otpToken.model.js";
 import sendEmail from "../../utils/sendEmail.js";
 import jwt from "jsonwebtoken";
+import eventBus, { EVENTS } from "../../utils/eventBus.js";
+import NotificationService from "../../services/NotificationService.js";
 
 // @desc Register a new user
 // @route POST /api/register
@@ -83,6 +85,9 @@ export const registerUser = async (req, res) => {
     await sendEmail(email, subject, textMessage, htmlMessage);
 
     console.log("OTP sent to:", email);
+
+    // 🆕 Emit Registration Event
+    eventBus.emit(EVENTS.USER_REGISTERED, { user: newUser });
 
     res.status(201).json({
       message: "User registered successfully. OTP sent to email.",
@@ -316,6 +321,9 @@ export const loginUser = async (req, res) => {
 
     console.log("✅ Login successful");
 
+    // 🆕 Emit Login Event
+    eventBus.emit(EVENTS.USER_LOGGED_IN, { user, ip: req.ip });
+
     res.status(200).json({
       message: "Login successful",
       token,
@@ -344,10 +352,10 @@ export const saveFcmToken = async (req, res) => {
   }
 
   await User.findByIdAndUpdate(userId, {
-    fcmToken: token,
+    $addToSet: { fcmTokens: token },
   });
 
-  res.json({ success: true });
+  res.json({ success: true, message: "FCM token saved successfully" });
 };
 
 // @desc Delete user account and all associated data

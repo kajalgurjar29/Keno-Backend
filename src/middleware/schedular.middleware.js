@@ -117,6 +117,16 @@ import { scrapeSAKenoByGame } from "../controllers/kenoScraper/SAkenoDrawNumberS
 import { scrapeTrackSideResultsWithRetry as scrapeNSWTrackside } from "../controllers/TracksiteScaper/NSWTrackSideScraperScaping.controller.js";
 import { scrapeTrackSideResultsWithRetry as scrapeVICTrackside } from "../controllers/TracksiteScaper/VICTrackSideScraperScaping.controller.js";
 import { scrapeTrackSideResultsWithRetry as scrapeACTTrackside } from "../controllers/TracksiteScaper/ACTTrackSideScraperScaping.controller.js";
+import ScheduledWorker from "../services/ScheduledWorker.js";
+
+// 🟢 Daily Summary Scheduler (Every morning at 9:00 AM)
+schedule.scheduleJob("0 9 * * *", async () => {
+  try {
+    await ScheduledWorker.sendDailySummary();
+  } catch (err) {
+    console.error("❌ Daily summary error:", err.message);
+  }
+});
 
 // 🟢 NSW Scraper Scheduler (every 1 minute)
 let runningNSW = false;

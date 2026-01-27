@@ -153,10 +153,27 @@ const userSchema = new mongoose.Schema(
       default: "active",
     },
 
-    
-    fcmToken: {
-      type: String,
-      default: null,
+
+    fcmTokens: {
+      type: [String],
+      default: [],
+    },
+    notificationPreferences: {
+      activity: {
+        email: { type: Boolean, default: true },
+        push: { type: Boolean, default: true },
+        inApp: { type: Boolean, default: true },
+      },
+      results: {
+        email: { type: Boolean, default: false },
+        push: { type: Boolean, default: true },
+        inApp: { type: Boolean, default: true },
+      },
+      alerts: {
+        email: { type: Boolean, default: true },
+        push: { type: Boolean, default: true },
+        inApp: { type: Boolean, default: true },
+      },
     },
   },
   { timestamps: true }

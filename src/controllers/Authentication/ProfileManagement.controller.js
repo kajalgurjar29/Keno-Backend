@@ -1,4 +1,5 @@
 import User from "../../models/User.model.js";
+import eventBus, { EVENTS } from "../../utils/eventBus.js";
 
 // @desc Get user data by ID data
 // @route GET /api/profile/user/:id
@@ -36,7 +37,7 @@ export const getUserData = async (req, res) => {
       success: true,
       data: {
         ...user.toObject(),
-        pin: user.pin   
+        pin: user.pin
       }
     });
   } catch (error) {
@@ -79,6 +80,9 @@ export const updateUserData = async (req, res) => {
       message: "User details updated successfully",
       data: updatedUser,
     });
+
+    // 🆕 Emit Notification Event
+    eventBus.emit(EVENTS.PROFILE_UPDATED, { userId: updatedUser._id });
   } catch (error) {
     console.error("Error updating user data:", error);
     res.status(500).json({ success: false, message: "Server error" });

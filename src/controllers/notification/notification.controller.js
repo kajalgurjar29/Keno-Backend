@@ -1,54 +1,38 @@
 import admin from "../../config/firebaseAdmin.js";
 import Notification from "../../models/Notification.js";
+import NotificationService from "../../services/NotificationService.js";
 
 /* ======================================================
-   1️⃣ SEND NOTIFICATION (Push + Save in DB)
+   1️⃣ SEND NOTIFICATION (Manual Push + Save in DB)
    POST /api/notification/send
 ====================================================== */
 export const sendNotification = async (req, res) => {
-  const { token, title, body, userId } = req.body;
-console.log("REQ BODY:", req);
-  if (!token || !title || !body || !userId) {
+  const { title, body, userId, category, priority, metadata } = req.body;
+
+  if (!title || !body || !userId) {
     return res.status(400).json({
       success: false,
-      message: "token, title, body, userId are required",
+      message: "title, body, userId are required",
     });
   }
 
   try {
-    // 🔔 Firebase Push
-    const message = {
-      token,
-      webpush: {
-        notification: {
-          title,
-          body,
-          // icon: "https://your-logo-url.png"
-        },
-      },
-      data: {
-        title,
-        body,
-      },
-    };
-
-    await admin.messaging().send(message);
-
-    // 💾 Save in DB (for Bell)
-    const notification = await Notification.create({
+    // 🔔 Utilize the Robust Central Service
+    await NotificationService.notifyUser({
       userId,
       title,
       body,
-      isRead: false,
+      category: category || "activity",
+      priority: priority || "medium",
+      metadata: metadata || {}
     });
 
     res.status(200).json({
       success: true,
-      message: "Notification sent & saved",
-      data: notification,
+      message: "Notification processing triggered",
     });
   } catch (error) {
-    console.error("FCM ERROR:", error);
+    console.error("Manual Notification Error:", error);
     res.status(500).json({
       success: false,
       message: "Notification failed",

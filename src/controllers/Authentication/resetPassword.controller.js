@@ -1,4 +1,5 @@
 import User from "../../models/User.model.js";
+import eventBus, { EVENTS } from "../../utils/eventBus.js";
 
 // @desc Change user password
 // @route POST /api/reset-password/change-password/:id    
@@ -24,6 +25,10 @@ export const changePassword = async (req, res) => {
     }
     user.password = newPassword;
     await user.save();
+
+    // 🆕 Emit Notification Event
+    eventBus.emit(EVENTS.PASSWORD_CHANGED, { userId: user._id });
+
     return res.status(200).json({ message: "Password updated successfully" });
   } catch (err) {
     return res
@@ -71,6 +76,9 @@ export const updatePin = async (req, res) => {
 
     user.pin = newPin; // 🔐 pre-save hook hashes it
     await user.save();
+
+    // 🆕 Emit Notification Event
+    eventBus.emit(EVENTS.PASSWORD_CHANGED, { userId: user._id });
 
     res.status(200).json({
       message: "PIN updated successfully",

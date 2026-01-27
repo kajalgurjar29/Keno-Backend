@@ -8,6 +8,7 @@ import { getChromiumPath } from "../../utils/chromiumPath.js";
 import KenoResult from "../../models/ACTkenoDrawResult.model.js";
 import util from "util";
 import { getIO } from "../../utils/socketUtils.js";
+import eventBus, { EVENTS } from "../../utils/eventBus.js";
 const execAsync = util.promisify(exec);
 import { exec } from "child_process";
 
@@ -483,6 +484,13 @@ export const scrapeACTKenoByGame = async () => {
               bonus: data.bonus
             });
             console.log("📡 ACT Keno: Emitted 'newResult' socket event");
+
+            // 🆕 Emit Background Event for Alert Matching & Notifications
+            eventBus.emit(EVENTS.NEW_RESULT_PUBLISHED, {
+              type: "KENO",
+              location: "ACT",
+              data: data
+            });
           } catch (socketErr) {
             console.warn("⚠️ ACT Keno: Socket emit failed:", socketErr.message);
           }
