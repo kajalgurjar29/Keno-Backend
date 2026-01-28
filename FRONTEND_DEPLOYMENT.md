@@ -7,7 +7,8 @@ Your Express server is now configured to serve both your API and frontend from t
 ## 📁 Current Setup
 
 ### **Domain Configuration:**
-- **Frontend:** `https://puntdata.com.au` (serves React/Vue/Angular app)
+- **Frontend (Production):** `https://puntdata.com.au`
+- **Frontend (Beta):** `https://puntmate.betamxpertz.co.in`
 - **API:** `https://api.puntdata.com.au` (API endpoints)
 - **Static Files:** Served from `dist 14/dist/`
 
@@ -26,7 +27,7 @@ app.get("*", (req, res) => {
 
 Your `.env` file is configured:
 ```env
-FRONTEND_URL=https://puntdata.com.au
+FRONTEND_URL=https://puntmate.betamxpertz.co.in
 API_BASE_URL=https://api.puntdata.com.au
 ```
 

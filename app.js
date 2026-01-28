@@ -35,6 +35,7 @@ const server = createServer(app);
 const allowedOrigins = [
   "https://www.puntdata.com.au",
   "https://puntdata.com.au",
+  "https://puntmate.betamxpertz.co.in",
   "http://localhost:3000",
   "http://localhost:5173",
 ];

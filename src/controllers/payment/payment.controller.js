@@ -76,6 +76,7 @@ import Payment from "../../models/Payment.js";
 
 export const createCheckout = async (req, res) => {
   try {
+    const frontendUrl = req.headers.origin || process.env.FRONTEND_URL;
     const userId = req.user.id;
 
     const session = await stripe.checkout.sessions.create({
@@ -96,8 +97,8 @@ export const createCheckout = async (req, res) => {
           quantity: 1,
         },
       ],
-      success_url: `${process.env.FRONTEND_URL}/payment-success`,
-      cancel_url: `${process.env.FRONTEND_URL}/payment-cancel`,
+      success_url: `${frontendUrl}/payment-success`,
+      cancel_url: `${frontendUrl}/payment-cancel`,
       metadata: {
         userId,
       },
