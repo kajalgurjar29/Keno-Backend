@@ -161,3 +161,109 @@ export const getTop10Exotics = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+export const getTracksideHorseEntryDetails = async (req, res) => {
+    try {
+        const { horseNo } = req.params;
+        const horseId = parseInt(horseNo);
+
+        if (isNaN(horseId) || horseId < 1 || horseId > 12) {
+            return res.status(400).json({ success: false, message: "Invalid horse number" });
+        }
+
+        let allRaces = [];
+        for (const M of MODELS) {
+            const races = await M.find({}, { runners: 1, numbers: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1 }).lean();
+            allRaces = allRaces.concat(races);
+        }
+
+        // Sort by time (asc) to calculate droughts
+        allRaces.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        const totalGames = allRaces.length;
+
+        let hits = [];
+        let gaps = [];
+        let lastHitIndex = -1;
+        let maxGap = 0;
+
+        allRaces.forEach((race, index) => {
+            let position = null;
+
+            // Try runners first
+            const runner = (race.runners || []).find(r => Number(r.horseNo) === horseId);
+            if (runner && runner.position) {
+                position = runner.position;
+            } else if (race.numbers && race.numbers.length > 0) {
+                // Fallback to numbers array (Index 0 = 1st, Index 1 = 2nd, Index 2 = 3rd)
+                const numIdx = race.numbers.indexOf(horseId);
+                if (numIdx !== -1) {
+                    position = numIdx + 1;
+                }
+            }
+
+            if (position && [1, 2, 3].includes(position)) {
+                // It's a hit (Win or Place)
+                const hitInfo = {
+                    date: race.date || race.createdAt,
+                    raceNumber: race.gameNumber || race.drawNumber,
+                    position: position,
+                    type: position === 1 ? "Win" : "Place",
+                    index: index
+                };
+                hits.push(hitInfo);
+
+                if (lastHitIndex !== -1) {
+                    const gap = index - lastHitIndex - 1;
+                    gaps.push(gap);
+                    if (gap > maxGap) maxGap = gap;
+                }
+                lastHitIndex = index;
+            }
+        });
+
+        const currentDrought = lastHitIndex === -1 ? totalGames : (totalGames - 1 - lastHitIndex);
+        const longestDrought = Math.max(maxGap, currentDrought);
+
+        // Average Drought: average gap between hits
+        const avgDrought = gaps.length > 0
+            ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length)
+            : (hits.length > 0 ? Math.round(totalGames / hits.length) : totalGames);
+
+        // Get last 5 hits in reverse order (newest first)
+        const last5Hits = hits.slice(-5).reverse();
+
+        // Add drought for each of the last 5 results
+        const last5WithDroughts = last5Hits.map((hit) => {
+            const hitIdxInHits = hits.findIndex(h => h.index === hit.index);
+            // Drought since previous hit or from the start of history
+            const droughtSincePrevious = hitIdxInHits > 0
+                ? hits[hitIdxInHits].index - hits[hitIdxInHits - 1].index - 1
+                : hit.index;
+
+            return {
+                date: hit.date,
+                raceNumber: hit.raceNumber,
+                type: hit.type,
+                position: hit.position,
+                drought: Math.max(0, droughtSincePrevious)
+            };
+        });
+
+        res.json({
+            success: true,
+            data: {
+                horseId,
+                currentDrought,
+                averageDrought: avgDrought,
+                longestDrought,
+                last5Results: last5WithDroughts,
+                totalHits: hits.length,
+                totalGames
+            }
+        });
+
+    } catch (error) {
+        console.error("Trackside Horse Details Error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
