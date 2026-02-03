@@ -8,6 +8,8 @@ import { connectDB } from "./src/db/db.config.js";
 import { createServer } from "http";
 import { initSocket } from "./src/utils/socketUtils.js";
 import { initializeServices } from "./src/services/index.js";
+import stripeRoutes from "./src/routers/stripe.routes.js";
+
 
 dotenv.config({ path: "./.env" });
 
@@ -35,12 +37,12 @@ const server = createServer(app);
 const allowedOrigins = [
   "https://www.puntdata.com.au",
   "https://puntdata.com.au",
-  "https://puntmate.betamxpertz.co.in",
   "http://localhost:3000",
   "http://localhost:5173",
 ];
 
 const io = initSocket(server, allowedOrigins);
+
 
 app.use(
   cors({
@@ -60,6 +62,9 @@ app.use(
   }),
 );
 app.options("*", cors());
+
+app.use("/api/v1/stripe", stripeRoutes);
+
 
 app.use(express.json());
 app.use(bodyParser.json());
@@ -98,14 +103,13 @@ import kenoHotColdRoute from "./src/routers/kenoHotCold.route.js";
 import kenoDashboardRoute from "./src/routers/kenoDashboard.route.js";
 import resultsRoutes from "./src/routers/results.routes.js";
 import paymentRoutes from "./src/routers/payment.routes.js";
+// import stripeRoutes from "./src/routers/stripe.routes.js"; // Moved to top
 
 // NEW ROUTES
 import alertsRouter from "./src/routers/Alerts.router.js";
 import tracksideAnalyticsRouter from "./src/routers/TracksideAnalytics.router.js";
 import kenoAnalyticsRouter from "./src/routers/KenoAnalytics.router.js";
 
-// API Routes
-app.use("/api/v1/payments", paymentRoutes);
 
 app.use("/api/v1/notification", notificationRoutes);
 app.use("/api/v1", kenoLiveRoute);
@@ -140,6 +144,10 @@ app.use("/api/v1", trackSideQuickStatsRouter);
 
 app.use("/api/v1/analytics", adminAnalyticsRoutes);
 
+// app.use("/api/v1/stripe", stripeRoutes); // Handled above line 64
+
+
+app.use("/api/v1/payments", paymentRoutes);
 // Catch-all handler: send back index.html for any non-API routes (SPA routing)
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));

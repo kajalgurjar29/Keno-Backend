@@ -45,6 +45,12 @@ export const registerUser = async (req, res) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 min expiry
 
+    // trial logic
+    const trialDays = 7;
+    const now = new Date();
+    const trialEnd = new Date(now);
+    trialEnd.setDate(trialEnd.getDate() + trialDays);
+
     // 4. Create user WITHOUT password
     const newUser = await User.create({
       fullName,
@@ -57,6 +63,10 @@ export const registerUser = async (req, res) => {
       otp,
       otpExpiry,
       password: null, // explicitly null
+      trialStart: now,
+      trialEnd,
+      planType: "trial",
+      isSubscriptionActive: true,
     });
 
     // 5. Send OTP email
@@ -99,6 +109,9 @@ export const registerUser = async (req, res) => {
         gender: newUser.gender,
         role: newUser.role,
         default_state: newUser.default_state,
+        isSubscriptionActive: newUser.isSubscriptionActive,
+        planType: newUser.planType,
+        trialEnd: newUser.trialEnd,
       },
     });
   } catch (error) {
@@ -311,6 +324,9 @@ export const loginUser = async (req, res) => {
         message: "Invalid credentials",
       });
     }
+    console.log("SUB STATUS:", user.isSubscribed);
+
+
 
     // 6. Generate JWT with role
     const token = jwt.sign(
@@ -335,6 +351,10 @@ export const loginUser = async (req, res) => {
         pin: user.pin,
         role: user.role,
         default_state: user.default_state,
+        isSubscriptionActive: user.isSubscriptionActive,
+        planType: user.planType,
+        trialEnd: user.trialEnd,
+        subscriptionEnd: user.subscriptionEnd,
       },
     });
   } catch (error) {

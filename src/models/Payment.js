@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-
 const paymentSchema = new mongoose.Schema(
   {
     userId: {
@@ -8,21 +7,13 @@ const paymentSchema = new mongoose.Schema(
       required: true,
     },
 
-    stripeCustomerId: {
-      type: String,
-    },
-
-    stripeSubscriptionId: {
-      type: String,
-    },
-
-    stripeSessionId: {
-      type: String,
-    },
+    stripeCustomerId: String,
+    stripeSubscriptionId: String,
+    stripeSessionId: String,
 
     plan: {
       type: String,
-      default: "monthly", // single plan
+      default: "monthly",
     },
 
     amount: {
@@ -32,15 +23,12 @@ const paymentSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "active", "cancelled"],
+      enum: ["pending", "trialing", "active", "cancelled"],
       default: "pending",
     },
 
-    currentPeriodEnd: {
-      type: Date,
-    },
+    currentPeriodEnd: Date,
   },
   { timestamps: true }
 );
-
 export default mongoose.model("Payment", paymentSchema);

@@ -153,6 +153,25 @@ const userSchema = new mongoose.Schema(
       default: "active",
     },
 
+    trialStart: Date,
+    trialEnd: Date,
+
+    planType: {
+      type: String,
+      enum: ["trial", "monthly", "yearly", null],
+      default: "trial",
+    },
+
+    subscriptionStart: Date,
+    subscriptionEnd: Date,
+
+    isSubscriptionActive: {
+      type: Boolean,
+      default: false,
+    },
+
+    stripeCustomerId: String,
+    stripeSubscriptionId: String,
 
     fcmTokens: {
       type: [String],

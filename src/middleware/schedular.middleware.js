@@ -118,6 +118,7 @@ import { scrapeTrackSideResultsWithRetry as scrapeNSWTrackside } from "../contro
 import { scrapeTrackSideResultsWithRetry as scrapeVICTrackside } from "../controllers/TracksiteScaper/VICTrackSideScraperScaping.controller.js";
 import { scrapeTrackSideResultsWithRetry as scrapeACTTrackside } from "../controllers/TracksiteScaper/ACTTrackSideScraperScaping.controller.js";
 import ScheduledWorker from "../services/ScheduledWorker.js";
+import User from "../models/User.model.js";
 
 // 🟢 Daily Summary Scheduler (Every morning at 9:00 AM)
 schedule.scheduleJob("0 9 * * *", async () => {
@@ -235,4 +236,30 @@ schedule.scheduleJob("*/5 * * * *", async () => {
   }
 
   runningTrackSide = false;
+});
+
+// 🟢 Subscription & Trial Expiry Scheduler (Every hour)
+schedule.scheduleJob("0 * * * *", async () => {
+  console.log("🕐 Running Subscription Expiry Check...");
+  const now = new Date();
+  try {
+    const result = await User.updateMany(
+      {
+        isSubscriptionActive: true,
+        $or: [
+          { planType: "trial", trialEnd: { $lt: now } },
+          {
+            planType: { $in: ["monthly", "yearly"] },
+            subscriptionEnd: { $lt: now },
+          },
+        ],
+      },
+      { $set: { isSubscriptionActive: false } }
+    );
+    if (result.modifiedCount > 0) {
+      console.log(`✅ Expired ${result.modifiedCount} subscriptions/trials.`);
+    }
+  } catch (err) {
+    console.error("❌ Expiry job error:", err.message);
+  }
 });
