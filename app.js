@@ -39,6 +39,7 @@ const allowedOrigins = [
   "https://puntdata.com.au",
   "http://localhost:3000",
   "http://localhost:5173",
+  "https://puntmate.betamxpertz.co.in",
 ];
 
 const io = initSocket(server, allowedOrigins);
