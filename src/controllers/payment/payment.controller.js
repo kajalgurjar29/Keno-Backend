@@ -88,8 +88,8 @@ export const createCheckout = async (req, res) => {
       payment_method_types: ["card"],
       mode: "subscription",
       customer_email: user.email,
-      success_url: `https://puntmate.betamxpertz.co.in/payment-success`,
-      cancel_url: `https://puntmate.betamxpertz.co.in/payment-cancel`,
+      success_url: `${process.env.FRONTEND_URL}/payment-success`,
+      cancel_url: `${process.env.FRONTEND_URL}/payment-cancel`,
       metadata: { userId, plan },
       line_items: [
         {

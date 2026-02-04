@@ -170,6 +170,11 @@ const userSchema = new mongoose.Schema(
       default: false,
     },
 
+    isSubscribed: {
+      type: Boolean,
+      default: false,
+    },
+
     stripeCustomerId: String,
     stripeSubscriptionId: String,
 

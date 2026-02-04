@@ -324,7 +324,7 @@ export const loginUser = async (req, res) => {
         message: "Invalid credentials",
       });
     }
-    console.log("SUB STATUS:", user.isSubscribed);
+    console.log("SUB STATUS:", user.isSubscriptionActive);
 
 
 

@@ -2,6 +2,35 @@ import stripe from "../../config/stripe.js";
 import Payment from "../../models/Payment.js";
 import User from "../../models/User.model.js";
 
+// AUTO-ACTIVATE HELPER FOR LOCAL DEV
+export const devAutoActivate = async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ message: "Not available in production" });
+  }
+
+  const userId = req.user.id;
+  try {
+    const updatedUser = await User.findByIdAndUpdate(userId, {
+      isSubscriptionActive: true,
+      isSubscribed: true, // Also set legacy field for compatibility
+      planType: "monthly", // Default for dev test
+      subscriptionStart: new Date(),
+      subscriptionEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // +30 days
+    }, { new: true });
+
+    console.log("🛠️ DEV MODE: Auto-activated subscription for user:", userId);
+    console.log("📊 Updated fields:", {
+      isSubscriptionActive: updatedUser.isSubscriptionActive,
+      isSubscribed: updatedUser.isSubscribed,
+      planType: updatedUser.planType
+    });
+    res.json({ success: true, user: updatedUser });
+  } catch (err) {
+    console.error("Dev activate error", err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export const stripeWebhook = async (req, res) => {
   const sig = req.headers["stripe-signature"];
   let event;
@@ -67,17 +96,30 @@ export const stripeWebhook = async (req, res) => {
       const userId = session.metadata?.userId;
       const plan = session.metadata?.plan || "monthly";
       if (userId) {
-        const updatedUser = await User.findByIdAndUpdate(userId, {
-          isSubscriptionActive: true,
-          planType: plan,
-          subscriptionStart: new Date(),
-          subscriptionEnd: new Date(subscription.current_period_end * 1000),
-          stripeSubscriptionId: session.subscription,
-          stripeCustomerId: session.customer
-        }, { new: true });
+        console.log(`🔄 Updating User ${userId} Subscription Status...`);
 
-        if (updatedUser) {
-          console.log("✅ USER UNLOCKED SUCCESSFULLY:", userId);
+        try {
+          const updatedUser = await User.findByIdAndUpdate(userId, {
+            isSubscriptionActive: true,
+            planType: plan,
+            subscriptionStart: new Date(),
+            subscriptionEnd: new Date(subscription.current_period_end * 1000),
+            stripeSubscriptionId: session.subscription,
+            stripeCustomerId: session.customer
+          }, { new: true });
+
+          if (updatedUser) {
+            console.log("✅ USER UNLOCKED SUCCESSFULLY:", {
+              userId: updatedUser._id,
+              isSubscriptionActive: updatedUser.isSubscriptionActive,
+              planType: updatedUser.planType,
+              subscriptionEnd: updatedUser.subscriptionEnd
+            });
+          } else {
+            console.error("❌ User not found during webhook update:", userId);
+          }
+        } catch (updateError) {
+          console.error("❌ Error updating user in webhook:", updateError);
         }
       }
     }
