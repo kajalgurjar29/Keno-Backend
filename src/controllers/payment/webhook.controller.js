@@ -101,6 +101,7 @@ export const stripeWebhook = async (req, res) => {
         try {
           const updatedUser = await User.findByIdAndUpdate(userId, {
             isSubscriptionActive: true,
+            isSubscribed: true,
             planType: plan,
             subscriptionStart: new Date(),
             subscriptionEnd: new Date(subscription.current_period_end * 1000),
@@ -157,6 +158,7 @@ export const stripeWebhook = async (req, res) => {
       if (payment?.userId) {
         await User.findByIdAndUpdate(payment.userId, {
           isSubscriptionActive: true,
+          isSubscribed: true,
           subscriptionEnd: new Date(subscription.current_period_end * 1000),
         });
         console.log("✅ SUBSCRIPTION RENEWED FOR USER:", payment.userId);

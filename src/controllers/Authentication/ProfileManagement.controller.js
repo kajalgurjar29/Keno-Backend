@@ -1,5 +1,6 @@
 import User from "../../models/User.model.js";
 import eventBus, { EVENTS } from "../../utils/eventBus.js";
+import { calculateSubscriptionStatus } from "../../utils/subscriptionUtils.js";
 
 // @desc Get user data by ID data
 // @route GET /api/profile/user/:id
@@ -31,6 +32,14 @@ export const getUserData = async (req, res) => {
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
+    }
+
+    // RECALCULATE SUBSCRIPTION STATUS
+    const { isSubscriptionActive, isSubscribed } = calculateSubscriptionStatus(user);
+    if (user.isSubscriptionActive !== isSubscriptionActive || user.isSubscribed !== isSubscribed) {
+      user.isSubscriptionActive = isSubscriptionActive;
+      user.isSubscribed = isSubscribed;
+      await user.save();
     }
 
     res.json({

@@ -8,6 +8,7 @@ import sendEmail from "../../utils/sendEmail.js";
 import jwt from "jsonwebtoken";
 import eventBus, { EVENTS } from "../../utils/eventBus.js";
 import NotificationService from "../../services/NotificationService.js";
+import { calculateSubscriptionStatus } from "../../utils/subscriptionUtils.js";
 
 // @desc Register a new user
 // @route POST /api/register
@@ -45,13 +46,12 @@ export const registerUser = async (req, res) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 min expiry
 
-    // trial logic
+    // 4. Create user WITH automatic 7-day trial
     const trialDays = 7;
     const now = new Date();
     const trialEnd = new Date(now);
     trialEnd.setDate(trialEnd.getDate() + trialDays);
 
-    // 4. Create user WITHOUT password
     const newUser = await User.create({
       fullName,
       email,
@@ -324,6 +324,15 @@ export const loginUser = async (req, res) => {
         message: "Invalid credentials",
       });
     }
+
+    // RECALCULATE SUBSCRIPTION STATUS ON LOGIN
+    const { isSubscriptionActive, isSubscribed } = calculateSubscriptionStatus(user);
+    if (user.isSubscriptionActive !== isSubscriptionActive || user.isSubscribed !== isSubscribed) {
+      user.isSubscriptionActive = isSubscriptionActive;
+      user.isSubscribed = isSubscribed;
+      await user.save();
+    }
+
     console.log("SUB STATUS:", user.isSubscriptionActive);
 
 
