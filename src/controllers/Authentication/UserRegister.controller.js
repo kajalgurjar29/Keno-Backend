@@ -27,14 +27,14 @@ export const registerUser = async (req, res) => {
         .json({ message: "Full name, email, and DOB are required" });
     }
 
-    // pin setting validation
-    if (!pin) {
-      return res.status(400).json({ message: "PIN is required" });
-    }
+    // // pin setting validation
+    // if (!pin) {
+    //   return res.status(400).json({ message: "PIN is required" });
+    // }
 
-    if (!/^\d{4}(\d{2})?$/.test(pin)) {
-      return res.status(400).json({ message: "PIN must be 4 or 6 digits" });
-    }
+    // if (!/^\d{4}(\d{2})?$/.test(pin)) {
+    //   return res.status(400).json({ message: "PIN must be 4 or 6 digits" });
+    // }
 
     // 2. Check if user already exists
     const existingUser = await User.findOne({ email });
