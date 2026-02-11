@@ -81,11 +81,19 @@ export const getTop10Exotics = async (req, res) => {
         // Previous code fetched ALL records: `await M.find({}, { runners: 1 })`.
         // I will do the same but combine them sorted by time.
 
-        let allRaces = [];
+        let allRacesMap = new Map();
         for (const M of MODELS) {
-            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1 }).lean();
-            allRaces = allRaces.concat(races);
+            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1 }).lean();
+            races.forEach(race => {
+                const key = race.gameNumber || race.drawNumber || race._id.toString();
+                // Prefer entry with runners populated
+                if (!allRacesMap.has(key) || (race.runners && race.runners.length > 0 && (!allRacesMap.get(key).runners || allRacesMap.get(key).runners.length === 0))) {
+                    allRacesMap.set(key, race);
+                }
+            });
         }
+
+        let allRaces = Array.from(allRacesMap.values());
 
         // Sort by Date/CreatedAt
         allRaces.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
@@ -171,11 +179,19 @@ export const getTracksideHorseEntryDetails = async (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid horse number" });
         }
 
-        let allRaces = [];
+        let allRacesMap = new Map();
         for (const M of MODELS) {
             const races = await M.find({}, { runners: 1, numbers: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1 }).lean();
-            allRaces = allRaces.concat(races);
+            races.forEach(race => {
+                const key = race.gameNumber || race.drawNumber || race._id.toString();
+                // Prefer entry with runners populated
+                if (!allRacesMap.has(key) || (race.runners && race.runners.length > 0 && (!allRacesMap.get(key).runners || allRacesMap.get(key).runners.length === 0))) {
+                    allRacesMap.set(key, race);
+                }
+            });
         }
+
+        let allRaces = Array.from(allRacesMap.values());
 
         // Sort by time (asc) to calculate droughts
         allRaces.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
