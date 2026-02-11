@@ -524,7 +524,7 @@ export const scrapeACTKenoByGame = async () => {
 export const getKenoResultsAtc = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
-    const results = await KenoResult.find({})
+    const results = await KenoResult.find({ numbers: { $size: 20 } })
       .sort({ createdAt: -1 })
       .limit(limit);
 
@@ -581,6 +581,13 @@ export const getFilteredKenoResultsAtc = async (req, res) => {
         .map((num) => Number(num.trim()))
         .filter((num) => !isNaN(num));
       if (numbers.length > 0) filter.numbers = { $all: numbers };
+    }
+
+    // Enforce 20 numbers rule
+    if (filter.numbers) {
+      filter.numbers.$size = 20;
+    } else {
+      filter.numbers = { $size: 20 };
     }
 
     // Convert page and limit to numbers

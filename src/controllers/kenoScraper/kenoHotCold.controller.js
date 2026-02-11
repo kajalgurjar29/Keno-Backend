@@ -2,11 +2,11 @@ import KenoResult from "../../models/NSWkenoDrawResult.model.js";
 
 export const getHotColdNumbers = async (req, res) => {
   try {
-    const lookback = parseInt(req.query.lookback) || 50; 
+    const lookback = parseInt(req.query.lookback) || 50;
     // last 50 draws se calculate
 
     // 🔹 Recent draws
-    const draws = await KenoResult.find()
+    const draws = await KenoResult.find({ numbers: { $size: 20 } })
       .sort({ createdAt: -1 })
       .limit(lookback);
 

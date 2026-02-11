@@ -8,6 +8,7 @@ const MODELS = [NSW, VIC, ACT, SA];
 export const getCombinedKenoQuickStats = async (req, res) => {
   try {
     const pipeline = [
+      { $match: { numbers: { $size: 20 } } },
       {
         $project: {
           drawDate: 1,
@@ -79,6 +80,7 @@ export const getCombinedKenoQuickStats = async (req, res) => {
 
     // Aggregation for Heads/Tails/Evens counts
     const headsTailsPipeline = [
+      { $match: { numbers: { $size: 20 } } },
       {
         $group: {
           _id: "$result",
@@ -126,6 +128,7 @@ export const getCombinedKenoQuickStats = async (req, res) => {
 export const getKenoGraphStats = async (req, res) => {
   try {
     const pipeline = [
+      { $match: { numbers: { $size: 20 } } },
       {
         $project: {
           drawDate: 1,
@@ -212,7 +215,7 @@ export const getKenoGraphStats = async (req, res) => {
     const trendData = await Promise.all(
       MODELS.map(async (model) => {
         return await model.aggregate([
-          { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+          { $match: { createdAt: { $gte: thirtyDaysAgo }, numbers: { $size: 20 } } },
           {
             $group: {
               _id: {
@@ -277,6 +280,7 @@ export const getKenoGraphStats = async (req, res) => {
             const headsTailsResults = await Promise.all(
               MODELS.map((model) =>
                 model.aggregate([
+                  { $match: { numbers: { $size: 20 } } },
                   { $group: { _id: "$result", count: { $sum: 1 } } },
                 ])
               )

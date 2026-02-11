@@ -5,7 +5,7 @@ export const getNumberFrequency = async (req, res) => {
     const lookback = parseInt(req.query.lookback) || 50;
     const top = parseInt(req.query.top) || 10;
 
-    const draws = await KenoResult.find()
+    const draws = await KenoResult.find({ numbers: { $size: 20 } })
       .sort({ createdAt: -1 })
       .limit(lookback);
 
@@ -46,7 +46,7 @@ export const getOddEvenDistribution = async (req, res) => {
     const lookback = parseInt(req.query.lookback) || 50;
 
     // 🔹 Last N draws
-    const draws = await KenoResult.find()
+    const draws = await KenoResult.find({ numbers: { $size: 20 } })
       .sort({ createdAt: -1 })
       .limit(lookback);
 

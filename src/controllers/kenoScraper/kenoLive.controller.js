@@ -3,7 +3,7 @@ import KenoResult from "../../models/NSWkenoDrawResult.model.js";
 export const getLiveKenoResult = async (req, res) => {
   try {
     // 🔥 Always fetch latest NSW draw
-    const result = await KenoResult.findOne()
+    const result = await KenoResult.findOne({ numbers: { $size: 20 } })
       .sort({ createdAt: -1 }); // or .sort({ _id: -1 })
 
     if (!result) {
@@ -34,7 +34,7 @@ export const getKenoDrawHistory = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const skip = (page - 1) * limit;
 
-    const results = await KenoResult.find()
+    const results = await KenoResult.find({ numbers: { $size: 20 } })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -70,6 +70,7 @@ export const getKenoHeadsTailsHistory = async (req, res) => {
     if (location) {
       query.location = location;
     }
+    query.numbers = { $size: 20 };
 
     // We can fetch from all models if needed, but for a "Table" usually we show per state or latest overall.
     // Let's stick to the current model for now or import others.
