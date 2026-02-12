@@ -117,18 +117,27 @@ export const getTop10Keno = async (req, res) => {
 
 export const getTop10Keno24h = async (req, res) => {
     try {
-        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
         let allGames = [];
         for (const M of MODELS) {
-            const games = await M.find({ createdAt: { $gte: oneDayAgo } }, { numbers: 1, createdAt: 1, date: 1 }).lean();
+            // Fetch the last 360 games from each model to ensure we have enough for a combined 360
+            const games = await M.find({}, { numbers: 1, createdAt: 1, date: 1 })
+                .sort({ createdAt: -1 })
+                .limit(360)
+                .lean();
             allGames = allGames.concat(games);
         }
 
-        // Sort by Date
+        // Sort by Date Ascending
         allGames.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+        // Limit to exactly the last 360 games combined
+        if (allGames.length > 360) {
+            allGames = allGames.slice(allGames.length - 360);
+        }
+
         const totalGames = allGames.length;
 
-        console.log(`Analyzing ${totalGames} Keno games (Last 24h) for Analytics...`);
+        console.log(`Analyzing ${totalGames} Keno games (Recent 360) for Analytics...`);
 
         const stats = {};
         // Initialize stats for 1-80 to ensure all are tracked (even if 0 wins)

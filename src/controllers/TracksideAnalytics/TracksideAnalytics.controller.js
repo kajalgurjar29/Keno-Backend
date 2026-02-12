@@ -38,37 +38,35 @@ const processStats = (acc, combo, gameIndex, date) => {
 };
 
 // Helper to format response
-const formatTop10 = (statsMap, totalGames) => {
+const formatTop10 = (statsMap, totalGames, recentStatsMap = {}, recentGamesCount = 360) => {
     return Object.entries(statsMap)
         .map(([combo, data]) => {
             const wins = data.count;
-            // Average Drought: Average of gaps?
-            // Or TotalGames / Wins?
-            // "Avg games between hits" = TotalGames / Wins is a good approximation for "Frequency".
-            // But standard "Average Drought" usually means Average of the gaps.
-            // If gaps = [10, 5, 20], avg = 11.6.  (3 hits, 2 gaps).
-            // Total span = 35. Total games approx 35.
-            // Simple metric: Math.round(totalGames / wins).
-            const avgDrought = Math.round(totalGames / wins);
-
-            const currentDrought = totalGames - data.lastIndex;
-
-            // Longest Drought: Max gap found + potentially current drought if it's longer
+            const avgGames = wins > 0 ? Number((totalGames / wins).toFixed(2)) : totalGames;
+            const currentDrought = totalGames - 1 - data.lastIndex;
             const maxHistoricalGap = data.gaps.length > 0 ? Math.max(...data.gaps) : 0;
             const longestDrought = Math.max(maxHistoricalGap, currentDrought);
 
+            const recentData = recentStatsMap[combo] || { count: 0 };
+            const recentWins = recentData.count;
+            const recentAvg = recentWins > 0 ? Number((recentGamesCount / recentWins).toFixed(2)) : recentGamesCount;
+
             return {
                 combination: combo,
-                winPercentage: ((wins / totalGames) * 100).toFixed(1),
-                averageDrought: avgDrought,
-                currentDrought: currentDrought,
+                hits: wins,
+                avgGames: avgGames,
+                hits360: recentWins,
+                avg360: recentAvg,
+                currentDrought: Math.max(0, currentDrought),
+                avgDrought: avgGames,
                 longestDrought: longestDrought,
-                lastAppeared: currentDrought, // Games ago
-                lastAppearedDate: data.lastDate, // Actual date/time
-                entries: combo.split("-").map(Number), // For frontend if needed
+                winPercentage: ((wins / totalGames) * 100).toFixed(2),
+                lastAppeared: Math.max(0, currentDrought),
+                lastAppearedDate: data.lastDate,
+                entries: combo.split("-").map(Number),
             };
         })
-        .sort((a, b) => parseFloat(b.winPercentage) - parseFloat(a.winPercentage))
+        .sort((a, b) => b.hits - a.hits)
         .slice(0, 10);
 };
 
@@ -102,19 +100,22 @@ export const getTop10Exotics = async (req, res) => {
         console.log(`Analyzing ${totalGames} Trackside races for Analytics...`);
 
         const stats = {
-            Quinella: {}, // Boxed
-            Exacta: {},   // Exact
-            Trifecta: {}, // Boxed
-            FirstFour: {} // Boxed
+            Quinella: {},
+            Exacta: {},
+            Trifecta: {},
+            FirstFour: {}
+        };
+        const recent360Stats = {
+            Quinella: {},
+            Exacta: {},
+            Trifecta: {},
+            FirstFour: {}
         };
 
-        // Pre-fetch check
-        console.log("Analyzing race data...");
+        const recentThreshold = Math.max(0, totalGames - 360);
 
         allRaces.forEach((race, index) => {
             let nums = race.numbers || [];
-
-            // Fallback to runners if numbers is empty
             if (nums.length < 2 && race.runners && race.runners.length > 0) {
                 const sortedRunners = getRunnersByPosition(race.runners);
                 nums = sortedRunners.map(r => r.horseNo);
@@ -124,43 +125,48 @@ export const getTop10Exotics = async (req, res) => {
 
             const r1 = nums[0];
             const r2 = nums[1];
-
-            // Use race.date if available, otherwise createdAt
             const raceDate = race.date || race.createdAt;
 
-            // Quinella (Boxed Top 2)
-            const qCombo = [r1, r2].sort((a, b) => a - b).join("-");
-            processStats(stats.Quinella, qCombo, index, raceDate);
+            // Process All-Time and Recent 360
+            const processAllTypes = (statsMap, isRecent) => {
+                const qCombo = [r1, r2].sort((a, b) => a - b).join("-");
+                processStats(statsMap.Quinella, qCombo, index, raceDate);
 
-            // Exacta (Ordered Top 2)
-            const eCombo = `${r1}-${r2}`;
-            processStats(stats.Exacta, eCombo, index, raceDate);
+                const eCombo = `${r1}-${r2}`;
+                processStats(statsMap.Exacta, eCombo, index, raceDate);
 
-            if (nums.length >= 3) {
-                const r3 = nums[2];
-                // Trifecta (Boxed Top 3)
-                const tCombo = [r1, r2, r3].sort((a, b) => a - b).join("-");
-                processStats(stats.Trifecta, tCombo, index, raceDate);
+                if (nums.length >= 3) {
+                    const r3 = nums[2];
+                    const tCombo = [r1, r2, r3].sort((a, b) => a - b).join("-");
+                    processStats(statsMap.Trifecta, tCombo, index, raceDate);
 
-                if (nums.length >= 4) {
-                    const r4 = nums[3];
-                    // First Four (Boxed Top 4)
-                    const fCombo = [r1, r2, r3, r4].sort((a, b) => a - b).join("-");
-                    processStats(stats.FirstFour, fCombo, index, raceDate);
+                    if (nums.length >= 4) {
+                        const r4 = nums[3];
+                        const fCombo = [r1, r2, r3, r4].sort((a, b) => a - b).join("-");
+                        processStats(statsMap.FirstFour, fCombo, index, raceDate);
+                    }
                 }
+            };
+
+            processAllTypes(stats, false);
+            if (index >= recentThreshold) {
+                processAllTypes(recent360Stats, true);
             }
         });
 
+        const recentGamesCount = Math.min(totalGames, 360);
+
         const responseData = {
-            Quinella: formatTop10(stats.Quinella, totalGames),
-            Exacta: formatTop10(stats.Exacta, totalGames),
-            Trifecta: formatTop10(stats.Trifecta, totalGames),
-            "First Four": formatTop10(stats.FirstFour, totalGames),
+            Quinella: formatTop10(stats.Quinella, totalGames, recent360Stats.Quinella, recentGamesCount),
+            Exacta: formatTop10(stats.Exacta, totalGames, recent360Stats.Exacta, recentGamesCount),
+            Trifecta: formatTop10(stats.Trifecta, totalGames, recent360Stats.Trifecta, recentGamesCount),
+            "First Four": formatTop10(stats.FirstFour, totalGames, recent360Stats.FirstFour, recentGamesCount),
         };
 
         res.json({
             success: true,
             totalGames,
+            recentGamesCount,
             data: responseData,
         });
 
@@ -172,10 +178,13 @@ export const getTop10Exotics = async (req, res) => {
 
 export const getTop10Exotics24h = async (req, res) => {
     try {
-        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
         let allRacesMap = new Map();
         for (const M of MODELS) {
-            const races = await M.find({ createdAt: { $gte: oneDayAgo } }, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1 }).lean();
+            // Fetch the last 360 races from each model to ensure we have enough for a combined 360
+            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1 })
+                .sort({ createdAt: -1 })
+                .limit(360)
+                .lean();
             races.forEach(race => {
                 const key = race.gameNumber || race.drawNumber || race._id.toString();
                 // Prefer entry with runners populated
@@ -187,11 +196,17 @@ export const getTop10Exotics24h = async (req, res) => {
 
         let allRaces = Array.from(allRacesMap.values());
 
-        // Sort by Date/CreatedAt
+        // Sort by Date/CreatedAt Ascending
         allRaces.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+        // Limit to exactly the last 360 races combined
+        if (allRaces.length > 360) {
+            allRaces = allRaces.slice(allRaces.length - 360);
+        }
+
         const totalGames = allRaces.length;
 
-        console.log(`Analyzing ${totalGames} Trackside races (Last 24h) for Analytics...`);
+        console.log(`Analyzing ${totalGames} Trackside races (Recent 360) for Analytics...`);
 
         const stats = {
             Quinella: {}, // Boxed
