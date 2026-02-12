@@ -170,6 +170,98 @@ export const getTop10Exotics = async (req, res) => {
     }
 };
 
+export const getTop10Exotics24h = async (req, res) => {
+    try {
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        let allRacesMap = new Map();
+        for (const M of MODELS) {
+            const races = await M.find({ createdAt: { $gte: oneDayAgo } }, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1 }).lean();
+            races.forEach(race => {
+                const key = race.gameNumber || race.drawNumber || race._id.toString();
+                // Prefer entry with runners populated
+                if (!allRacesMap.has(key) || (race.runners && race.runners.length > 0 && (!allRacesMap.get(key).runners || allRacesMap.get(key).runners.length === 0))) {
+                    allRacesMap.set(key, race);
+                }
+            });
+        }
+
+        let allRaces = Array.from(allRacesMap.values());
+
+        // Sort by Date/CreatedAt
+        allRaces.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        const totalGames = allRaces.length;
+
+        console.log(`Analyzing ${totalGames} Trackside races (Last 24h) for Analytics...`);
+
+        const stats = {
+            Quinella: {}, // Boxed
+            Exacta: {},   // Exact
+            Trifecta: {}, // Boxed
+            FirstFour: {} // Boxed
+        };
+
+        // Pre-fetch check
+        console.log("Analyzing race data (24h)...");
+
+        allRaces.forEach((race, index) => {
+            let nums = race.numbers || [];
+
+            // Fallback to runners if numbers is empty
+            if (nums.length < 2 && race.runners && race.runners.length > 0) {
+                const sortedRunners = getRunnersByPosition(race.runners);
+                nums = sortedRunners.map(r => r.horseNo);
+            }
+
+            if (nums.length < 2) return;
+
+            const r1 = nums[0];
+            const r2 = nums[1];
+
+            // Use race.date if available, otherwise createdAt
+            const raceDate = race.date || race.createdAt;
+
+            // Quinella (Boxed Top 2)
+            const qCombo = [r1, r2].sort((a, b) => a - b).join("-");
+            processStats(stats.Quinella, qCombo, index, raceDate);
+
+            // Exacta (Ordered Top 2)
+            const eCombo = `${r1}-${r2}`;
+            processStats(stats.Exacta, eCombo, index, raceDate);
+
+            if (nums.length >= 3) {
+                const r3 = nums[2];
+                // Trifecta (Boxed Top 3)
+                const tCombo = [r1, r2, r3].sort((a, b) => a - b).join("-");
+                processStats(stats.Trifecta, tCombo, index, raceDate);
+
+                if (nums.length >= 4) {
+                    const r4 = nums[3];
+                    // First Four (Boxed Top 4)
+                    const fCombo = [r1, r2, r3, r4].sort((a, b) => a - b).join("-");
+                    processStats(stats.FirstFour, fCombo, index, raceDate);
+                }
+            }
+        });
+
+        const responseData = {
+            Quinella: formatTop10(stats.Quinella, totalGames),
+            Exacta: formatTop10(stats.Exacta, totalGames),
+            Trifecta: formatTop10(stats.Trifecta, totalGames),
+            "First Four": formatTop10(stats.FirstFour, totalGames),
+        };
+
+        res.json({
+            success: true,
+            totalGames,
+            data: responseData,
+        });
+
+    } catch (error) {
+        console.error("Trackside Analytics 24h Error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 export const getTracksideHorseEntryDetails = async (req, res) => {
     try {
         const { horseNo } = req.params;
