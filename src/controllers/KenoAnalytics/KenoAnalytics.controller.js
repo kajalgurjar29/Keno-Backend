@@ -61,6 +61,8 @@ const formatTop10 = (statsMap, totalGames, sortBy = "hot") => {
         .slice(0, 10);
 };
 
+
+
 export const getTop10Keno = async (req, res) => {
     try {
         let allGames = [];
