@@ -9,7 +9,7 @@ const router = express.Router();
 router.use(auth);
 router.use(checkSubscription);
 
-router.post("/trackside", analyzeTracksideHistoricalFrequency);
+router.get("/trackside", analyzeTracksideHistoricalFrequency);
 router.post("/keno", analyzeKenoHistoricalFrequency);
 
 export default router;
