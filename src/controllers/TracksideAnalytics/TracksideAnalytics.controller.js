@@ -75,7 +75,6 @@ const formatTop10 = (statsMap, totalGames, recent360StatsMap = {}, recent1000Sta
         });
 };
 
-
 export const getTop10Exotics = async (req, res) => {
     try {
         let allRacesMap = new Map();
@@ -281,8 +280,6 @@ export const getTop10Exotics24h = async (req, res) => {
     }
 };
 
-
-
 export const getTracksideHorseEntryDetails = async (req, res) => {
     try {
         const { horseNo } = req.params;
@@ -396,5 +393,131 @@ export const getTracksideHorseEntryDetails = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+export const getTracksideDashboardStats = async (req, res) => {
+    try {
+        const { location = "NSW" } = req.query;
+        const Model = location === "VIC" ? VIC : (location === "ACT" ? ACT : NSW);
+
+        // Fetch recent races for the table (last 10)
+        const recentRacesRaw = await Model.find()
+            .sort({ createdAt: -1 })
+            .limit(10)
+            .lean();
+
+        if (!recentRacesRaw.length) {
+            return res.json({
+                success: true,
+                location,
+                latestRace: null,
+                recentRaces: [],
+                charts: { numberFrequency: { odd: 0, even: 0 }, oddEvenDistribution: [] }
+            });
+        }
+
+        const formatResult = (r) => {
+            let nums = [];
+            if (r.numbers && r.numbers.length > 0) {
+                nums = r.numbers.slice(0, 4);
+            } else if (r.runners) {
+                nums = getRunnersByPosition(r.runners).map(run => run.horseNo).slice(0, 4);
+            }
+            return nums;
+        };
+
+        const latestRaceData = recentRacesRaw[0];
+        const latestNums = formatResult(latestRaceData);
+
+        // Fetch larger sample for stats (last 100 races)
+        const statsData = await Model.find()
+            .sort({ createdAt: -1 })
+            .limit(100)
+            .lean();
+
+        let oddWins = 0;
+        let evenWins = 0;
+
+        statsData.forEach(race => {
+            const winners = formatResult(race);
+            winners.forEach(num => {
+                if (num % 2 === 0) evenWins++;
+                else oddWins++;
+            });
+        });
+
+        const totalWinners = oddWins + evenWins;
+
+        res.json({
+            success: true,
+            location,
+            latestRace: {
+                id: latestRaceData.gameNumber || latestRaceData.drawNumber,
+                date: latestRaceData.date || latestRaceData.createdAt,
+                numbers: latestNums,
+            },
+            recentRaces: recentRacesRaw.map(r => ({
+                id: r.gameNumber || r.drawNumber,
+                type: "Trackside",
+                time: r.date || r.createdAt,
+                numbers: formatResult(r)
+            })),
+            charts: {
+                numberFrequency: {
+                    odd: oddWins,
+                    even: evenWins,
+                    oddPercent: totalWinners ? ((oddWins / totalWinners) * 100).toFixed(1) : 0,
+                    evenPercent: totalWinners ? ((evenWins / totalWinners) * 100).toFixed(1) : 0
+                },
+                oddEvenDistribution: [
+                    { name: "Odd", value: oddWins, percentage: totalWinners ? ((oddWins / totalWinners) * 100).toFixed(1) : 0 },
+                    { name: "Even", value: evenWins, percentage: totalWinners ? ((evenWins / totalWinners) * 100).toFixed(1) : 0 }
+                ]
+            }
+        });
+
+    } catch (error) {
+        console.error("Trackside Dashboard Stats Error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const getRecentTracksideResults = async (req, res) => {
+    try {
+        const { location = "NSW" } = req.query;
+        const Model = location === "VIC" ? VIC : (location === "ACT" ? ACT : NSW);
+
+        const results = await Model.find()
+            .sort({ createdAt: -1 })
+            .limit(10)
+            .lean();
+
+        const formatResult = (r) => {
+            let nums = [];
+            if (r.numbers && r.numbers.length > 0) {
+                nums = r.numbers.slice(0, 4);
+            } else if (r.runners) {
+                nums = getRunnersByPosition(r.runners).map(run => run.horseNo).slice(0, 4);
+            }
+            return nums;
+        };
+
+        res.json({
+            success: true,
+            location,
+            data: results.map(r => ({
+                id: r.gameNumber || r.drawNumber,
+                type: "Trackside",
+                time: r.date || r.createdAt,
+                numbers: formatResult(r)
+            }))
+        });
+
+    } catch (error) {
+        console.error("Trackside Recent Results Error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+
 
 
