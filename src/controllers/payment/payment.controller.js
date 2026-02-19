@@ -34,8 +34,8 @@
 //         },
 //       ],
 
-//       success_url: `${process.env.FRONTEND_URL}/payment-success`,
-//       cancel_url: `${process.env.FRONTEND_URL}/payment-cancel`,
+//       success_url: `${process.env.FRONTEND_URL || process.env.SERVER_URL}/payment-success`,
+//       cancel_url: `${process.env.FRONTEND_URL || process.env.SERVER_URL}/payment-cancel`,
 
 //       metadata: { userId },
 //     });
@@ -89,8 +89,8 @@ export const createCheckout = async (req, res) => {
       mode: "subscription",
       customer_email: user.email,
       allow_promotion_codes: true, // ✅ ENABLES THE PROMO CODE FIELD
-      success_url: `${process.env.FRONTEND_URL}/payment-success`,
-      cancel_url: `${process.env.FRONTEND_URL}/payment-cancel`,
+      success_url: `${process.env.FRONTEND_URL || process.env.SERVER_URL}/payment-success`,
+      cancel_url: `${process.env.FRONTEND_URL || process.env.SERVER_URL}/payment-cancel`,
       metadata: { userId, plan },
       line_items: [
         {
