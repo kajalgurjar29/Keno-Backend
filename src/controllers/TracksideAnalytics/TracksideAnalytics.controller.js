@@ -12,13 +12,15 @@ const getRunnersByPosition = (runners = []) => {
 };
 
 // Helper to process stats
-const processStats = (acc, combo, gameIndex, date) => {
+const processStats = (acc, combo, gameIndex, date, dividendStr = null) => {
     if (!acc[combo]) {
         acc[combo] = {
             count: 0,
             lastIndex: -1,
             lastDate: null,
             gaps: [],
+            divSum: 0,
+            divCount: 0,
         };
     }
     const entry = acc[combo];
@@ -35,6 +37,15 @@ const processStats = (acc, combo, gameIndex, date) => {
     entry.count++;
     entry.lastIndex = gameIndex;
     entry.lastDate = date;
+
+    // Process Dividend
+    if (dividendStr && typeof dividendStr === "string" && dividendStr.includes("$")) {
+        const val = parseFloat(dividendStr.replace("$", "").replace(",", ""));
+        if (!isNaN(val)) {
+            entry.divSum += val;
+            entry.divCount++;
+        }
+    }
 };
 
 // Helper to format response
@@ -55,9 +66,13 @@ const formatTop10 = (statsMap, totalGames, recent360StatsMap = {}, recent1000Sta
             const wins1000 = recentData1000.count;
             const avg1000 = wins1000 > 0 ? Number((recentGamesCount1000 / wins1000).toFixed(2)) : recentGamesCount1000;
 
+            const avgDiv = data.divCount > 0 ? (data.divSum / data.divCount).toFixed(2) : "0.00";
+            const recentAvgDiv360 = recentData360.divCount > 0 ? (recentData360.divSum / recentData360.divCount).toFixed(2) : "0.00";
+
             return {
                 combination: combo,
-                dividend: "$0.00",
+                dividend: `$${avgDiv}`,
+                recentDividend360: `$${recentAvgDiv360}`,
                 hits: wins,
                 avgGames: avgGames,
                 hits1000: wins1000,
@@ -79,7 +94,7 @@ export const getTop10Exotics = async (req, res) => {
     try {
         let allRacesMap = new Map();
         for (const M of MODELS) {
-            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1 }).lean();
+            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1, dividends: 1 }).lean();
             races.forEach(race => {
                 const raceDate = race.date || (race.createdAt ? new Date(race.createdAt).toISOString().split('T')[0] : "UNK");
                 const raceNum = (race.gameNumber !== undefined && race.gameNumber !== null && race.gameNumber !== "")
@@ -119,26 +134,24 @@ export const getTop10Exotics = async (req, res) => {
             const r2 = nums[1];
             const raceDate = race.date || race.createdAt;
 
-            const updateStats = (target, combo, idx, dt) => {
-                processStats(target, combo, idx, dt);
-            };
-
             const processAllTypes = (targetMap) => {
+                const divs = race.dividends || {};
+
                 const qCombo = [r1, r2].sort((a, b) => a - b).join("-");
-                updateStats(targetMap.Quinella, qCombo, index, raceDate);
+                processStats(targetMap.Quinella, qCombo, index, raceDate, divs.quinella);
 
                 const eCombo = `${r1}-${r2}`;
-                updateStats(targetMap.Exacta, eCombo, index, raceDate);
+                processStats(targetMap.Exacta, eCombo, index, raceDate, divs.exacta);
 
                 if (nums.length >= 3) {
                     const r3 = nums[2];
                     const tCombo = [r1, r2, r3].sort((a, b) => a - b).join("-");
-                    updateStats(targetMap.Trifecta, tCombo, index, raceDate);
+                    processStats(targetMap.Trifecta, tCombo, index, raceDate, divs.trifecta);
 
                     if (nums.length >= 4) {
                         const r4 = nums[3];
                         const fCombo = [r1, r2, r3, r4].sort((a, b) => a - b).join("-");
-                        updateStats(targetMap.FirstFour, fCombo, index, raceDate);
+                        processStats(targetMap.FirstFour, fCombo, index, raceDate, divs.first4);
                     }
                 }
             };
@@ -153,16 +166,17 @@ export const getTop10Exotics = async (req, res) => {
 
         const formatAndSort = (data, total, r360, r1000, rg360, rg1000) => {
             return formatTop10(data, total, r360, r1000, rg360, rg1000)
-                .sort((a, b) => b.hits - a.hits) // Ranked by combinations that hit the most
+                .sort((a, b) => b.hits - a.hits) // Ranked by combinations that hit the most (all time)
                 .slice(0, 10)
                 .map((item, index) => {
                     const { entries, ...rest } = item;
                     return {
                         Rank: index + 1,
                         Entries: entries,
+                        ClientComment: "Live Data",
+                        ...rest,
                         RNK: index + 1,
                         rank: index + 1,
-                        ...rest
                     };
                 });
         };
@@ -192,9 +206,8 @@ export const getTop10Exotics24h = async (req, res) => {
     try {
         let allRacesMap = new Map();
         for (const M of MODELS) {
-            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1 })
+            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1, dividends: 1 })
                 .sort({ createdAt: -1 })
-                .limit(4000)
                 .lean();
             races.forEach(race => {
                 const raceDate = race.date || (race.createdAt ? new Date(race.createdAt).toISOString().split('T')[0] : "UNK");
@@ -234,21 +247,23 @@ export const getTop10Exotics24h = async (req, res) => {
             const raceDate = race.date || race.createdAt;
 
             const processAllTypes = (targetMap) => {
+                const divs = race.dividends || {};
+
                 const qCombo = [r1, r2].sort((a, b) => a - b).join("-");
-                processStats(targetMap.Quinella, qCombo, index, raceDate);
+                processStats(targetMap.Quinella, qCombo, index, raceDate, divs.quinella);
 
                 const eCombo = `${r1}-${r2}`;
-                processStats(targetMap.Exacta, eCombo, index, raceDate);
+                processStats(targetMap.Exacta, eCombo, index, raceDate, divs.exacta);
 
                 if (nums.length >= 3) {
                     const r3 = nums[2];
                     const tCombo = [r1, r2, r3].sort((a, b) => a - b).join("-");
-                    processStats(targetMap.Trifecta, tCombo, index, raceDate);
+                    processStats(targetMap.Trifecta, tCombo, index, raceDate, divs.trifecta);
 
                     if (nums.length >= 4) {
                         const r4 = nums[3];
                         const fCombo = [r1, r2, r3, r4].sort((a, b) => a - b).join("-");
-                        processStats(targetMap.FirstFour, fCombo, index, raceDate);
+                        processStats(targetMap.FirstFour, fCombo, index, raceDate, divs.first4);
                     }
                 }
             };
@@ -263,16 +278,18 @@ export const getTop10Exotics24h = async (req, res) => {
 
         const formatAndSort24h = (data, total, r360, r1000, rg360, rg1000) => {
             return formatTop10(data, total, r360, r1000, rg360, rg1000)
-                .sort((a, b) => b.hits360 - a.hits360) // Ranked by recent hits
+                .sort((a, b) => b.hits - a.hits) // Ranked by combinations that hit the most (all time)
                 .slice(0, 10)
                 .map((item, index) => {
-                    const { entries, ...rest } = item;
+                    const { entries, recentDividend360, ...rest } = item;
                     return {
                         Rank: index + 1,
                         Entries: entries,
+                        ClientComment: "Live Data",
+                        dividend: recentDividend360, // Use recent dividend for live analysis
+                        ...rest,
                         RNK: index + 1,
                         rank: index + 1,
-                        ...rest
                     };
                 });
         };

@@ -31,7 +31,7 @@ const processNumberStats = (acc, number, gameIndex, date) => {
 };
 
 const formatTop10 = (statsMap, totalGames, sortBy = "hot") => {
-    return Object.entries(statsMap)
+    const results = Object.entries(statsMap)
         .map(([num, data]) => {
             const wins = data.count;
             const avgDrought = Math.round(totalGames / (wins || 1));
@@ -47,6 +47,7 @@ const formatTop10 = (statsMap, totalGames, sortBy = "hot") => {
                 longestDrought: longestDrought,
                 lastAppeared: currentDrought,
                 lastAppearedDate: data.lastDate,
+                hits: wins,
             };
         })
         .sort((a, b) => {
@@ -59,6 +60,15 @@ const formatTop10 = (statsMap, totalGames, sortBy = "hot") => {
             }
         })
         .slice(0, 10);
+
+    return results.map((item, index) => ({
+        Rank: index + 1,
+        Entries: [item.number],
+        ClientComment: "Live Data",
+        ...item,
+        RNK: index + 1,
+        rank: index + 1,
+    }));
 };
 
 
