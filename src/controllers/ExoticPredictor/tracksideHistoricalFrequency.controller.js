@@ -42,7 +42,23 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
             // No limit - get full history for dynamic analysis
             const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, gameId: 1, gameName: 1, dividends: 1, location: 1 }).lean();
             races.forEach(race => {
-                const key = race._id.toString();
+                // Normalize date string to ensure cross-state merging
+                let raceDate = "UNK";
+                if (race.date && race.date.length >= 8) {
+                    if (race.date.includes("/")) {
+                        const parts = race.date.split("/");
+                        if (parts[0].length === 4) raceDate = race.date.substring(0, 10).replace(/\//g, "-");
+                        else raceDate = `${parts[parts.length - 1]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                    } else {
+                        raceDate = race.date.substring(0, 10);
+                    }
+                } else if (race.createdAt) {
+                    raceDate = new Date(race.createdAt).toISOString().split('T')[0];
+                }
+
+                // Unified ID: prioritizing gameNumber/drawNumber which is consistent across states
+                const raceNum = race.gameNumber || race.drawNumber || race.gameId || race._id.toString();
+                const key = `${raceDate}_${raceNum}`.trim().toLowerCase();
 
                 if (!allRacesMap.has(key) || (race.runners && race.runners.length > 0 && (!allRacesMap.get(key).runners || allRacesMap.get(key).runners.length === 0))) {
                     allRacesMap.set(key, race);
@@ -193,16 +209,20 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
         const combinedHits = Array.from(anyHitIndices).sort((a, b) => a - b);
         const combinedAvg = combinedHits.length > 0 ? (totalGames / combinedHits.length).toFixed(1) : totalGames;
 
+        // Calculate hits in the last 1000 races for the summary
+        const hitsLast1000Count = combinedHits.filter(i => i >= totalGames - 1000).length;
+        const combinedAvg1000 = hitsLast1000Count > 0 ? (Math.min(totalGames, 1000) / hitsLast1000Count).toFixed(1) : (totalGames > 0 ? Math.min(totalGames, 1000) : 0);
+
         let bestState = "NSW";
         let maxStateHits = 0;
         const totalStateHits = { NSW: 0, VIC: 0, ACT: 0 };
         Object.values(results).forEach(r => {
-            totalStateHits.NSW += r.stateBreakdown.NSW;
-            totalStateHits.VIC += r.stateBreakdown.VIC;
-            totalStateHits.ACT += r.stateBreakdown.ACT;
+            totalStateHits.NSW += (r.stateBreakdown.NSW || 0);
+            totalStateHits.VIC += (r.stateBreakdown.VIC || 0);
+            totalStateHits.ACT += (r.stateBreakdown.ACT || 0);
         });
 
-        for (const [state, hits] in Object.entries(totalStateHits)) {
+        for (const [state, hits] of Object.entries(totalStateHits)) {
             if (hits > maxStateHits) {
                 maxStateHits = hits;
                 bestState = state;
@@ -216,6 +236,12 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
                 totalGamesProcessed: totalGames,
                 combinedHits: combinedHits.length,
                 overallHitFrequency: `1 in ${combinedAvg} races`,
+                overallHitRate: `1 in ${combinedAvg} races`,
+                hitsLast1000: `1 in ${combinedAvg1000} races`,
+                avgGms: combinedAvg,
+                avgGames: combinedAvg,
+                averageGames: combinedAvg,
+                overallAvg: combinedAvg,
                 bestPerformingState: bestState,
                 formattedSummary: `Across ${totalGames.toLocaleString()} races, your exotic strategy hit ${combinedHits.length.toLocaleString()} times. This is a dynamic hit rate of 1 in every ${combinedAvg} races. Best performance observed in ${bestState}.`
             },

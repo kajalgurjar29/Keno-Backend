@@ -82,7 +82,9 @@ export const getTop10Exotics = async (req, res) => {
             const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1 }).lean();
             races.forEach(race => {
                 const raceDate = race.date || (race.createdAt ? new Date(race.createdAt).toISOString().split('T')[0] : "UNK");
-                const raceNum = race.gameNumber ?? race.drawNumber ?? race._id.toString();
+                const raceNum = (race.gameNumber !== undefined && race.gameNumber !== null && race.gameNumber !== "")
+                    ? race.gameNumber
+                    : (race.drawNumber || race.gameId || race._id.toString());
                 const key = `${raceDate}_${raceNum}`;
 
                 if (!allRacesMap.has(key) || (race.runners && race.runners.length > 0 && (!allRacesMap.get(key).runners || allRacesMap.get(key).runners.length === 0))) {
@@ -192,11 +194,13 @@ export const getTop10Exotics24h = async (req, res) => {
         for (const M of MODELS) {
             const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1 })
                 .sort({ createdAt: -1 })
-                .limit(4000) // Increased limit to ensure enough unique games after cross-state deduplication
+                .limit(4000)
                 .lean();
             races.forEach(race => {
                 const raceDate = race.date || (race.createdAt ? new Date(race.createdAt).toISOString().split('T')[0] : "UNK");
-                const raceNum = race.gameNumber ?? race.drawNumber ?? race._id.toString();
+                const raceNum = (race.gameNumber !== undefined && race.gameNumber !== null && race.gameNumber !== "")
+                    ? race.gameNumber
+                    : (race.drawNumber || race.gameId || race._id.toString());
                 const key = `${raceDate}_${raceNum}`;
 
                 if (!allRacesMap.has(key) || (race.runners && race.runners.length > 0 && (!allRacesMap.get(key).runners || allRacesMap.get(key).runners.length === 0))) {
@@ -308,7 +312,9 @@ export const getTracksideHorseEntryDetails = async (req, res) => {
             const races = await M.find({}, { runners: 1, numbers: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, gameName: 1, gameId: 1, location: 1 }).lean();
             races.forEach(race => {
                 const raceDate = race.date || (race.createdAt ? new Date(race.createdAt).toISOString().split('T')[0] : "UNK");
-                const raceNum = race.gameNumber ?? race.drawNumber ?? race._id.toString();
+                const raceNum = (race.gameNumber !== undefined && race.gameNumber !== null && race.gameNumber !== "")
+                    ? race.gameNumber
+                    : (race.drawNumber || race.gameId || race._id.toString());
                 const key = `${raceDate}_${raceNum}`;
 
                 if (!allRacesMap.has(key) || (race.runners && race.runners.length > 0 && (!allRacesMap.get(key).runners || allRacesMap.get(key).runners.length === 0))) {
