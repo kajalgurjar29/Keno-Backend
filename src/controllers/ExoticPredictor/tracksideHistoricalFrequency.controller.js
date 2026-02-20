@@ -40,9 +40,10 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
 
         for (const M of modelsToFetch) {
             // No limit - get full history for dynamic analysis
-            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, dividends: 1, location: 1 }).lean();
+            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, gameId: 1, gameName: 1, dividends: 1, location: 1 }).lean();
             races.forEach(race => {
                 const key = race._id.toString();
+
                 if (!allRacesMap.has(key) || (race.runners && race.runners.length > 0 && (!allRacesMap.get(key).runners || allRacesMap.get(key).runners.length === 0))) {
                     allRacesMap.set(key, race);
                 }

@@ -57,7 +57,7 @@ const formatTop10 = (statsMap, totalGames, recent360StatsMap = {}, recent1000Sta
 
             return {
                 combination: combo,
-                dividend: "$0.00", // Dividend information not available in current models
+                dividend: "$0.00",
                 hits: wins,
                 avgGames: avgGames,
                 hits1000: wins1000,
@@ -79,9 +79,12 @@ export const getTop10Exotics = async (req, res) => {
     try {
         let allRacesMap = new Map();
         for (const M of MODELS) {
-            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1 }).lean();
+            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1 }).lean();
             races.forEach(race => {
-                const key = race.gameNumber || race.drawNumber || race._id.toString();
+                const raceDate = race.date || (race.createdAt ? new Date(race.createdAt).toISOString().split('T')[0] : "UNK");
+                const raceNum = race.gameNumber ?? race.drawNumber ?? race._id.toString();
+                const key = `${raceDate}_${raceNum}`;
+
                 if (!allRacesMap.has(key) || (race.runners && race.runners.length > 0 && (!allRacesMap.get(key).runners || allRacesMap.get(key).runners.length === 0))) {
                     allRacesMap.set(key, race);
                 }
@@ -148,14 +151,18 @@ export const getTop10Exotics = async (req, res) => {
 
         const formatAndSort = (data, total, r360, r1000, rg360, rg1000) => {
             return formatTop10(data, total, r360, r1000, rg360, rg1000)
-                .sort((a, b) => b.hits - a.hits)
+                .sort((a, b) => b.hits - a.hits) // Ranked by combinations that hit the most
                 .slice(0, 10)
-                .map((item, index) => ({
-                    Rank: index + 1,
-                    RNK: index + 1,
-                    rank: index + 1,
-                    ...item
-                }));
+                .map((item, index) => {
+                    const { entries, ...rest } = item;
+                    return {
+                        Rank: index + 1,
+                        Entries: entries,
+                        RNK: index + 1,
+                        rank: index + 1,
+                        ...rest
+                    };
+                });
         };
 
         const responseData = {
@@ -183,12 +190,15 @@ export const getTop10Exotics24h = async (req, res) => {
     try {
         let allRacesMap = new Map();
         for (const M of MODELS) {
-            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1 })
+            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1 })
                 .sort({ createdAt: -1 })
-                .limit(3000)
+                .limit(4000) // Increased limit to ensure enough unique games after cross-state deduplication
                 .lean();
             races.forEach(race => {
-                const key = race.gameNumber || race.drawNumber || race._id.toString();
+                const raceDate = race.date || (race.createdAt ? new Date(race.createdAt).toISOString().split('T')[0] : "UNK");
+                const raceNum = race.gameNumber ?? race.drawNumber ?? race._id.toString();
+                const key = `${raceDate}_${raceNum}`;
+
                 if (!allRacesMap.has(key) || (race.runners && race.runners.length > 0 && (!allRacesMap.get(key).runners || allRacesMap.get(key).runners.length === 0))) {
                     allRacesMap.set(key, race);
                 }
@@ -249,14 +259,18 @@ export const getTop10Exotics24h = async (req, res) => {
 
         const formatAndSort24h = (data, total, r360, r1000, rg360, rg1000) => {
             return formatTop10(data, total, r360, r1000, rg360, rg1000)
-                .sort((a, b) => b.hits360 - a.hits360)
+                .sort((a, b) => b.hits360 - a.hits360) // Ranked by recent hits
                 .slice(0, 10)
-                .map((item, index) => ({
-                    Rank: index + 1,
-                    RNK: index + 1,
-                    rank: index + 1,
-                    ...item
-                }));
+                .map((item, index) => {
+                    const { entries, ...rest } = item;
+                    return {
+                        Rank: index + 1,
+                        Entries: entries,
+                        RNK: index + 1,
+                        rank: index + 1,
+                        ...rest
+                    };
+                });
         };
 
         const responseData = {
@@ -291,10 +305,12 @@ export const getTracksideHorseEntryDetails = async (req, res) => {
 
         let allRacesMap = new Map();
         for (const M of MODELS) {
-            const races = await M.find({}, { runners: 1, numbers: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1 }).lean();
+            const races = await M.find({}, { runners: 1, numbers: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, gameName: 1, gameId: 1, location: 1 }).lean();
             races.forEach(race => {
-                const key = race.gameNumber || race.drawNumber || race._id.toString();
-                // Prefer entry with runners populated
+                const raceDate = race.date || (race.createdAt ? new Date(race.createdAt).toISOString().split('T')[0] : "UNK");
+                const raceNum = race.gameNumber ?? race.drawNumber ?? race._id.toString();
+                const key = `${raceDate}_${raceNum}`;
+
                 if (!allRacesMap.has(key) || (race.runners && race.runners.length > 0 && (!allRacesMap.get(key).runners || allRacesMap.get(key).runners.length === 0))) {
                     allRacesMap.set(key, race);
                 }
@@ -331,7 +347,7 @@ export const getTracksideHorseEntryDetails = async (req, res) => {
                 // It's a hit (Win or Place)
                 const hitInfo = {
                     date: race.date || race.createdAt,
-                    raceNumber: race.gameNumber || race.drawNumber,
+                    raceNumber: (race.gameNumber !== undefined && race.gameNumber !== null) ? `Game ${race.gameNumber}` : (race.drawNumber || race.gameName || race.gameId || "N/A"),
                     position: position,
                     type: position === 1 ? "Win" : "Place",
                     index: index
@@ -456,7 +472,7 @@ export const getTracksideDashboardStats = async (req, res) => {
                 numbers: latestNums,
             },
             recentRaces: recentRacesRaw.map(r => ({
-                id: r.gameNumber || r.drawNumber,
+                id: r.gameNumber || r.drawNumber || r.gameName || r.gameId || "",
                 type: "Trackside",
                 time: r.date || r.createdAt,
                 numbers: formatResult(r)
@@ -505,7 +521,7 @@ export const getRecentTracksideResults = async (req, res) => {
             success: true,
             location,
             data: results.map(r => ({
-                id: r.gameNumber || r.drawNumber,
+                id: r.gameNumber || r.drawNumber || r.gameName || r.gameId || "",
                 type: "Trackside",
                 time: r.date || r.createdAt,
                 numbers: formatResult(r)
