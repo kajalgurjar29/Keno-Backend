@@ -16,7 +16,7 @@ const getRunnersByPosition = (runners = []) => {
 
 export const analyzeTracksideHistoricalFrequency = async (req, res) => {
     try {
-        const { pos1, pos2, pos3, pos4, location = "ALL" } = req.query;
+        const { pos1, pos2, pos3, pos4, location = "ALL", recentCount = null } = req.query;
 
         const parsePos = (str) => {
             if (!str) return [];
@@ -39,9 +39,10 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
         const modelsToFetch = location === "ALL" ? [NSW, VIC, ACT] : (allCollections[location] ? [allCollections[location]] : [NSW]);
 
         for (const M of modelsToFetch) {
-            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1 }).lean();
+            // No limit - get full history for dynamic analysis
+            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, dividends: 1, location: 1 }).lean();
             races.forEach(race => {
-                const key = race.gameNumber || race.drawNumber || race._id.toString();
+                const key = race._id.toString();
                 if (!allRacesMap.has(key) || (race.runners && race.runners.length > 0 && (!allRacesMap.get(key).runners || allRacesMap.get(key).runners.length === 0))) {
                     allRacesMap.set(key, race);
                 }
@@ -50,6 +51,12 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
 
         let allRaces = Array.from(allRacesMap.values());
         allRaces.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+        // Dynamic Filtering: Support for "Recent" view
+        if (recentCount && !isNaN(parseInt(recentCount))) {
+            allRaces = allRaces.slice(-parseInt(recentCount));
+        }
+
         const totalGames = allRaces.length;
 
         // Process races
@@ -62,7 +69,9 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
                 idx,
                 raceNo: r.gameNumber || r.drawNumber,
                 date: r.date || r.createdAt,
-                nums: nums.slice(0, 4)
+                nums: nums.slice(0, 4),
+                dividends: r.dividends || {},
+                location: r.location
             };
         });
 
@@ -95,6 +104,10 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
 
         types.forEach(type => {
             const hits = [];
+            let totalDivValue = 0;
+            let divCount = 0;
+            const stateBreakdown = { NSW: 0, VIC: 0, ACT: 0 };
+
             processed.forEach(race => {
                 const n = race.nums;
                 if (n.length < 2) return;
@@ -109,16 +122,32 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
                 } else if (type === "First4") {
                     if (n.length >= 4 && p1.includes(n[0]) && p2.includes(n[1]) && p3.includes(n[2]) && p4.includes(n[3]) && (new Set(n.slice(0, 4)).size === 4)) isHit = true;
                 }
+
                 if (isHit) {
                     hits.push(race.idx);
                     anyHitIndices.add(race.idx);
+
+                    // Dividend Tracking
+                    const divKey = type.toLowerCase();
+                    const divStr = race.dividends ? race.dividends[divKey] : null;
+                    if (divStr && divStr.includes("$")) {
+                        const val = parseFloat(divStr.replace("$", "").replace(",", ""));
+                        if (!isNaN(val)) {
+                            totalDivValue += val;
+                            divCount++;
+                        }
+                    }
+
+                    // State Tracking
+                    if (race.location) stateBreakdown[race.location]++;
                 }
             });
 
             const count = hits.length;
             const avgGms = count > 0 ? Number((totalGames / count).toFixed(1)) : totalGames;
-            const last1k = hits.filter(i => i >= totalGames - 1000).length;
             const currDrought = count > 0 ? (totalGames - 1 - hits[hits.length - 1]) : totalGames;
+
+            // Gap/Drought Analysis
             let maxGap = 0;
             for (let i = 1; i < hits.length; i++) {
                 const gap = hits[i] - hits[i - 1] - 1;
@@ -128,49 +157,71 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
 
             const comboType = type === "First4" ? "FirstFour" : type;
             const combos = getCombos(comboType);
+            const avgDiv = divCount > 0 ? (totalDivValue / divCount) : 0;
 
             results[type] = {
                 hits: count,
+                winProbability: ((count / totalGames) * 100).toFixed(2) + "%",
                 avgGms: avgGms,
-                hitsLast1k: last1k,
+                hitsLast360: hits.filter(i => i >= totalGames - 360).length,
+                hitsLast1000: hits.filter(i => i >= totalGames - 1000).length,
                 currentDrought: currDrought,
                 longestDrought: longestDrought,
                 combos,
                 flexiPercent: combos > 0 ? ((1 / combos) * 100).toFixed(2) + "%" : "0.00%",
-                avgDiv: "$0.00",
+                avgDiv: "$" + avgDiv.toFixed(2),
+                potentialROI: avgDiv > 0 ? ((avgDiv / combos).toFixed(2) + "x") : "N/A",
+                stateBreakdown,
                 last5Hits: hits.slice(-5).reverse().map(idx => {
                     const race = processed[idx];
                     const hIdx = hits.indexOf(idx);
+                    const divKey = type.toLowerCase();
                     return {
                         raceNumber: race.raceNo,
                         date: race.date,
                         result: race.nums,
-                        dividend: "$0.00",
-                        drought: hIdx > 0 ? (idx - hits[hIdx - 1] - 1) : idx,
-                        avgDrought: avgGms,
-                        longestDrought
+                        dividend: race.dividends ? (race.dividends[divKey] || "$0.00") : "$0.00",
+                        droughtAtHit: hIdx > 0 ? (idx - hits[hIdx - 1] - 1) : idx,
+                        location: race.location
                     };
                 })
             };
         });
 
+        // Overall Summary Logic
         const combinedHits = Array.from(anyHitIndices).sort((a, b) => a - b);
-        const combinedLast1k = combinedHits.filter(i => i >= totalGames - 1000).length;
         const combinedAvg = combinedHits.length > 0 ? (totalGames / combinedHits.length).toFixed(1) : totalGames;
+
+        let bestState = "NSW";
+        let maxStateHits = 0;
+        const totalStateHits = { NSW: 0, VIC: 0, ACT: 0 };
+        Object.values(results).forEach(r => {
+            totalStateHits.NSW += r.stateBreakdown.NSW;
+            totalStateHits.VIC += r.stateBreakdown.VIC;
+            totalStateHits.ACT += r.stateBreakdown.ACT;
+        });
+
+        for (const [state, hits] in Object.entries(totalStateHits)) {
+            if (hits > maxStateHits) {
+                maxStateHits = hits;
+                bestState = state;
+            }
+        }
 
         return res.json({
             success: true,
+            analyticsMode: recentCount ? `Recent ${recentCount} Games` : "Full Historical",
             summary: {
-                totalGames,
+                totalGamesProcessed: totalGames,
                 combinedHits: combinedHits.length,
-                combinedHitsLast1k: combinedLast1k,
-                combinedAvgGames: combinedAvg,
-                formattedSummary: `Across the data set, at least one of your exotic bets hit ${combinedHits.length.toLocaleString()} times (1 in ${combinedAvg} games on average). In the last 1,000 games, they hit ${combinedLast1k} times (1 in ${(combinedLast1k > 0 ? (1000 / combinedLast1k).toFixed(1) : 0)} on average).`
+                overallHitFrequency: `1 in ${combinedAvg} races`,
+                bestPerformingState: bestState,
+                formattedSummary: `Across ${totalGames.toLocaleString()} races, your exotic strategy hit ${combinedHits.length.toLocaleString()} times. This is a dynamic hit rate of 1 in every ${combinedAvg} races. Best performance observed in ${bestState}.`
             },
             data: results
         });
     } catch (error) {
-        console.error("Historical Frequency Error:", error);
+        console.error("Historical Frequency Power Analytics Error:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
