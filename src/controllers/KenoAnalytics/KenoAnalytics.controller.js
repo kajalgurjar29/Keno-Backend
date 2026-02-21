@@ -24,11 +24,9 @@ const processNumberStats = (acc, number, gameIndex, date) => {
     }
     const entry = acc[number];
 
-    let gap;
-    if (entry.lastIndex === -1) {
-        gap = 0;
-    } else {
-        gap = gameIndex - entry.lastIndex;
+    if (entry.lastIndex !== -1) {
+        // Drought = number of games missed between appearances
+        const gap = gameIndex - entry.lastIndex - 1;
         entry.gaps.push(gap);
     }
 
@@ -41,8 +39,9 @@ const formatTop10 = (statsMap, totalGames, sortBy = "hot") => {
     const results = Object.entries(statsMap)
         .map(([num, data]) => {
             const wins = data.count;
-            const avgDrought = Math.round(totalGames / (wins || 1));
-            const currentDrought = Math.max(0, totalGames - 1 - data.lastIndex);
+            // Average skipped games between wins
+            const avgDrought = wins > 0 ? Math.round((totalGames - wins) / wins) : totalGames;
+            const currentDrought = data.lastIndex === -1 ? totalGames : Math.max(0, totalGames - 1 - data.lastIndex);
             const maxHistoricalGap = data.gaps.length > 0 ? Math.max(...data.gaps) : 0;
             const longestDrought = Math.max(maxHistoricalGap, currentDrought);
 
@@ -55,27 +54,31 @@ const formatTop10 = (statsMap, totalGames, sortBy = "hot") => {
                 lastAppeared: currentDrought,
                 lastAppearedDate: data.lastDate,
                 hits: wins,
+                lastIndex: data.lastIndex
             };
         })
         .sort((a, b) => {
             if (sortBy === "hot") {
-                // Sort by Win % Descending
-                return parseFloat(b.winPercentage) - parseFloat(a.winPercentage);
+                // Primary: Highest Hits, Secondary: Most Recent (Smallest Current Drought), Tertiary: Number
+                return (b.hits - a.hits) || (a.currentDrought - b.currentDrought) || (a.number - b.number);
             } else {
-                // Sort by Current Drought Descending (Coldest)
-                return b.currentDrought - a.currentDrought;
+                // Primary: Highest Current Drought, Secondary: Longest Historical Drought, Tertiary: Lowest Total Hits
+                return (b.currentDrought - a.currentDrought) || (b.longestDrought - a.longestDrought) || (a.hits - b.hits);
             }
         })
         .slice(0, 10);
 
-    return results.map((item, index) => ({
-        Rank: index + 1,
-        Entries: [item.number],
-        ClientComment: "Live Data",
-        ...item,
-        RNK: index + 1,
-        rank: index + 1,
-    }));
+    return results.map((item, index) => {
+        const { lastIndex, ...rest } = item;
+        return {
+            Rank: index + 1,
+            Entries: [rest.number],
+            ClientComment: "Live Data",
+            ...rest,
+            RNK: index + 1,
+            rank: index + 1,
+        }
+    });
 };
 
 export const getTop10Keno = async (req, res) => {

@@ -50,10 +50,20 @@ class NotificationService {
             if (preferences.push && user.fcmTokens && user.fcmTokens.length > 0) {
                 const sendPromises = user.fcmTokens.map(async (token) => {
                     try {
+                        // FCM data values MUST be strings
+                        const fcmData = { click_action: "FLUTTER_NOTIFICATION_CLICK" };
+                        if (metadata) {
+                            Object.entries(metadata).forEach(([key, value]) => {
+                                if (value !== null && value !== undefined) {
+                                    fcmData[key] = String(value);
+                                }
+                            });
+                        }
+
                         const message = {
                             token,
                             notification: { title, body },
-                            data: { ...metadata, click_action: "FLUTTER_NOTIFICATION_CLICK" },
+                            data: fcmData,
                             webpush: {
                                 notification: {
                                     title,
