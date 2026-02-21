@@ -1,19 +1,33 @@
-import KenoResult from "../../models/NSWkenoDrawResult.model.js";
+import NSWKeno from "../../models/NSWkenoDrawResult.model.js";
+import VICKeno from "../../models/VICkenoDrawResult.model.js";
+import ACTKeno from "../../models/ACTkenoDrawResult.model.js";
+import SAKeno from "../../models/SAkenoDrawResult.model.js";
+
+const getModel = (location) => {
+  switch (location?.toUpperCase()) {
+    case "VIC": return VICKeno;
+    case "ACT": return ACTKeno;
+    case "SA": return SAKeno;
+    default: return NSWKeno;
+  }
+};
 
 export const getLiveKenoResult = async (req, res) => {
   try {
-    // 🔥 Always fetch latest NSW draw
-    const result = await KenoResult.findOne({ numbers: { $size: 20 } })
-      .sort({ createdAt: -1 }); // or .sort({ _id: -1 })
+    const { location } = req.query;
+    const Model = getModel(location);
+
+    const result = await Model.findOne({ numbers: { $size: 20 } })
+      .sort({ createdAt: -1 });
 
     if (!result) {
       return res.status(404).json({
-        message: "No NSW keno result available",
+        message: `No ${location || "NSW"} keno result available`,
       });
     }
 
     res.status(200).json({
-      label: "Keno NSW",
+      label: `Keno ${result.location || "NSW"}`,
       draw: result.draw,
       date: result.date,
       numbers: result.numbers,
@@ -25,23 +39,22 @@ export const getLiveKenoResult = async (req, res) => {
   }
 };
 
-
-
-
 export const getKenoDrawHistory = async (req, res) => {
   try {
+    const { location } = req.query;
     const limit = parseInt(req.query.limit) || 20;
     const page = parseInt(req.query.page) || 1;
     const skip = (page - 1) * limit;
+    const Model = getModel(location);
 
-    const results = await KenoResult.find({ numbers: { $size: 20 } })
+    const results = await Model.find({ numbers: { $size: 20 } })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
     const formattedData = results.map((item) => ({
       race: `#${item.draw}`,
-      time: item.date, // agar future me time mile to yahan update
+      time: item.date,
       number: item.numbers.join("-"),
       status: "Completed",
     }));
@@ -63,20 +76,11 @@ export const getKenoDrawHistory = async (req, res) => {
 
 export const getKenoHeadsTailsHistory = async (req, res) => {
   try {
-    const { location } = req.query; // Optional filter by state
+    const { location } = req.query;
     const limit = parseInt(req.query.limit) || 20;
+    const Model = getModel(location);
 
-    let query = {};
-    if (location) {
-      query.location = location;
-    }
-    query.numbers = { $size: 20 };
-
-    // We can fetch from all models if needed, but for a "Table" usually we show per state or latest overall.
-    // Let's stick to the current model for now or import others.
-    // Actually, KenoResult in this file is NSW. 
-
-    const results = await KenoResult.find(query)
+    const results = await Model.find({ numbers: { $size: 20 } })
       .sort({ createdAt: -1 })
       .limit(limit);
 

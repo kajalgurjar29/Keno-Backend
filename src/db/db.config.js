@@ -19,17 +19,21 @@ const connectDB = async () => {
     process.exit(1);
   }
 
+  const dbName = process.env.DB_NAME || "keno";
+  const connectionString = mongoUri.includes('?')
+    ? mongoUri.replace('?', `${dbName}?`)
+    : (mongoUri.endsWith('/') ? `${mongoUri}${dbName}` : `${mongoUri}/${dbName}`);
+
   try {
-    await mongoose.connect(mongoUri, {
+    await mongoose.connect(connectionString, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      // connection pool and timeouts to reduce chance of silent disconnects
       maxPoolSize: 20,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
       family: 4,
     });
-    console.log("Your MongoDB Connected Successfully..");
+    console.log(`Your MongoDB (${dbName}) Connected Successfully..`);
   } catch (error) {
     console.error("MongoDB connection failed", error);
     process.exit(1);
