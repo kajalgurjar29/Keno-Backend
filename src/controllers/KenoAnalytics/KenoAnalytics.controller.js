@@ -3,7 +3,14 @@ import VICKeno from "../../models/VICkenoDrawResult.model.js";
 import ACTKeno from "../../models/ACTkenoDrawResult.model.js";
 import SAKeno from "../../models/SAkenoDrawResult.model.js";
 
-const MODELS = [NSWKeno, VICKeno, ACTKeno, SAKeno];
+const MODELS_MAP = {
+    "NSW": NSWKeno,
+    "VIC": VICKeno,
+    "ACT": ACTKeno,
+    "SA": SAKeno
+};
+
+const ALL_MODELS = [NSWKeno, VICKeno, ACTKeno, SAKeno];
 
 // Helper to process stats for a number
 const processNumberStats = (acc, number, gameIndex, date) => {
@@ -35,7 +42,7 @@ const formatTop10 = (statsMap, totalGames, sortBy = "hot") => {
         .map(([num, data]) => {
             const wins = data.count;
             const avgDrought = Math.round(totalGames / (wins || 1));
-            const currentDrought = totalGames - data.lastIndex;
+            const currentDrought = Math.max(0, totalGames - 1 - data.lastIndex);
             const maxHistoricalGap = data.gaps.length > 0 ? Math.max(...data.gaps) : 0;
             const longestDrought = Math.max(maxHistoricalGap, currentDrought);
 
@@ -71,12 +78,17 @@ const formatTop10 = (statsMap, totalGames, sortBy = "hot") => {
     }));
 };
 
-
-
 export const getTop10Keno = async (req, res) => {
     try {
+        const { location } = req.query;
+        let modelsToUse = ALL_MODELS;
+
+        if (location && MODELS_MAP[location.toUpperCase()]) {
+            modelsToUse = [MODELS_MAP[location.toUpperCase()]];
+        }
+
         let allGames = [];
-        for (const M of MODELS) {
+        for (const M of modelsToUse) {
             const games = await M.find({}, { numbers: 1, createdAt: 1, date: 1 }).lean();
             allGames = allGames.concat(games);
         }
@@ -85,23 +97,24 @@ export const getTop10Keno = async (req, res) => {
         allGames.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
         const totalGames = allGames.length;
 
-        console.log(`Analyzing ${totalGames} Keno games for Analytics...`);
+        if (totalGames === 0) {
+            return res.json({
+                success: true,
+                totalGames: 0,
+                data: { top10HotKeno: [], top10ColdKeno: [] }
+            });
+        }
+
+        console.log(`Analyzing ${totalGames} Keno games for ${location || "ALL"} Analytics...`);
 
         const stats = {};
-        // Initialize stats for 1-80 to ensure all are tracked (even if 0 wins)
         for (let i = 1; i <= 80; i++) {
-            stats[i] = {
-                count: 0,
-                lastIndex: -1,
-                lastDate: null,
-                gaps: [],
-            };
+            stats[i] = { count: 0, lastIndex: -1, lastDate: null, gaps: [] };
         }
 
         allGames.forEach((game, index) => {
             const nums = game.numbers || [];
             const gameDate = game.date || game.createdAt;
-
             nums.forEach(num => {
                 if (stats[num]) {
                     processNumberStats(stats, num, index, gameDate);
@@ -115,6 +128,7 @@ export const getTop10Keno = async (req, res) => {
         res.json({
             success: true,
             totalGames,
+            location: location || "ALL",
             data: {
                 top10HotKeno: hotNumbers,
                 top10ColdKeno: coldNumbers
@@ -129,9 +143,15 @@ export const getTop10Keno = async (req, res) => {
 
 export const getTop10Keno24h = async (req, res) => {
     try {
+        const { location } = req.query;
+        let modelsToUse = ALL_MODELS;
+
+        if (location && MODELS_MAP[location.toUpperCase()]) {
+            modelsToUse = [MODELS_MAP[location.toUpperCase()]];
+        }
+
         let allGames = [];
-        for (const M of MODELS) {
-            // Fetch the last 360 games from each model to ensure we have enough for a combined 360
+        for (const M of modelsToUse) {
             const games = await M.find({}, { numbers: 1, createdAt: 1, date: 1 })
                 .sort({ createdAt: -1 })
                 .limit(360)
@@ -139,7 +159,6 @@ export const getTop10Keno24h = async (req, res) => {
             allGames = allGames.concat(games);
         }
 
-        // Sort by Date Ascending
         allGames.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
         // Limit to exactly the last 360 games combined
@@ -149,23 +168,24 @@ export const getTop10Keno24h = async (req, res) => {
 
         const totalGames = allGames.length;
 
-        console.log(`Analyzing ${totalGames} Keno games (Recent 360) for Analytics...`);
+        if (totalGames === 0) {
+            return res.json({
+                success: true,
+                totalGames: 0,
+                data: { top10HotKeno: [], top10ColdKeno: [] }
+            });
+        }
+
+        console.log(`Analyzing ${totalGames} Keno games (Recent) for ${location || "ALL"} Analytics...`);
 
         const stats = {};
-        // Initialize stats for 1-80 to ensure all are tracked (even if 0 wins)
         for (let i = 1; i <= 80; i++) {
-            stats[i] = {
-                count: 0,
-                lastIndex: -1,
-                lastDate: null,
-                gaps: [],
-            };
+            stats[i] = { count: 0, lastIndex: -1, lastDate: null, gaps: [] };
         }
 
         allGames.forEach((game, index) => {
             const nums = game.numbers || [];
             const gameDate = game.date || game.createdAt;
-
             nums.forEach(num => {
                 if (stats[num]) {
                     processNumberStats(stats, num, index, gameDate);
@@ -179,6 +199,7 @@ export const getTop10Keno24h = async (req, res) => {
         res.json({
             success: true,
             totalGames,
+            location: location || "ALL",
             data: {
                 top10HotKeno: hotNumbers,
                 top10ColdKeno: coldNumbers
