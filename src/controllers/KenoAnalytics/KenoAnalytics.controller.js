@@ -40,10 +40,13 @@ const formatTop10 = (statsMap, totalGames, sortBy = "hot") => {
         .map(([num, data]) => {
             const wins = data.count;
             // Average skipped games between wins
-            const avgDrought = wins > 0 ? Math.round((totalGames - wins) / wins) : totalGames;
+            // Drought = (Total - Wins) / Wins
+            const avgDrought = wins > 0 ? Number(((totalGames - wins) / wins).toFixed(1)) : totalGames;
             const currentDrought = data.lastIndex === -1 ? totalGames : Math.max(0, totalGames - 1 - data.lastIndex);
             const maxHistoricalGap = data.gaps.length > 0 ? Math.max(...data.gaps) : 0;
             const longestDrought = Math.max(maxHistoricalGap, currentDrought);
+
+            const lastWinDate = data.lastDate ? (data.lastDate instanceof Date ? data.lastDate.toLocaleDateString('en-AU') : data.lastDate) : "-";
 
             return {
                 number: parseInt(num),
@@ -52,7 +55,8 @@ const formatTop10 = (statsMap, totalGames, sortBy = "hot") => {
                 currentDrought: currentDrought,
                 longestDrought: longestDrought,
                 lastAppeared: currentDrought,
-                lastAppearedDate: data.lastDate,
+                lastAppearedDate: lastWinDate,
+                lastWin: lastWinDate, // For consistency
                 hits: wins,
                 lastIndex: data.lastIndex
             };
@@ -92,11 +96,12 @@ export const getTop10Keno = async (req, res) => {
 
         let allGames = [];
         for (const M of modelsToUse) {
-            const games = await M.find({}, { numbers: 1, createdAt: 1, date: 1 }).lean();
+            // ONLY use valid draws with 20 numbers
+            const games = await M.find({ numbers: { $size: 20 } }, { numbers: 1, createdAt: 1, date: 1 }).lean();
             allGames = allGames.concat(games);
         }
 
-        // Sort by Date
+        // Sort by Date (createdAt is most reliable for sequence)
         allGames.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
         const totalGames = allGames.length;
 
@@ -108,7 +113,7 @@ export const getTop10Keno = async (req, res) => {
             });
         }
 
-        console.log(`Analyzing ${totalGames} Keno games for ${location || "ALL"} Analytics...`);
+        console.log(`Analyzing ${totalGames} valid Keno games for ${location || "ALL"} All-time Analytics...`);
 
         const stats = {};
         for (let i = 1; i <= 80; i++) {
@@ -117,7 +122,7 @@ export const getTop10Keno = async (req, res) => {
 
         allGames.forEach((game, index) => {
             const nums = game.numbers || [];
-            const gameDate = game.date || game.createdAt;
+            const gameDate = game.createdAt || game.date;
             nums.forEach(num => {
                 if (stats[num]) {
                     processNumberStats(stats, num, index, gameDate);
@@ -155,16 +160,18 @@ export const getTop10Keno24h = async (req, res) => {
 
         let allGames = [];
         for (const M of modelsToUse) {
-            const games = await M.find({}, { numbers: 1, createdAt: 1, date: 1 })
+            // ONLY use valid draws with 20 numbers, limit each state to 360 to ensure we have enough for a combined window
+            const games = await M.find({ numbers: { $size: 20 } }, { numbers: 1, createdAt: 1, date: 1 })
                 .sort({ createdAt: -1 })
                 .limit(360)
                 .lean();
             allGames = allGames.concat(games);
         }
 
+        // Sort chronologically to process gaps correctly
         allGames.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
-        // Limit to exactly the last 360 games combined
+        // Limit to exactly the last 360 valid games combined
         if (allGames.length > 360) {
             allGames = allGames.slice(allGames.length - 360);
         }
@@ -179,7 +186,7 @@ export const getTop10Keno24h = async (req, res) => {
             });
         }
 
-        console.log(`Analyzing ${totalGames} Keno games (Recent) for ${location || "ALL"} Analytics...`);
+        console.log(`Analyzing ${totalGames} valid Keno games (Last 360) for ${location || "ALL"} Recent Analytics...`);
 
         const stats = {};
         for (let i = 1; i <= 80; i++) {
@@ -188,7 +195,7 @@ export const getTop10Keno24h = async (req, res) => {
 
         allGames.forEach((game, index) => {
             const nums = game.numbers || [];
-            const gameDate = game.date || game.createdAt;
+            const gameDate = game.createdAt || game.date;
             nums.forEach(num => {
                 if (stats[num]) {
                     processNumberStats(stats, num, index, gameDate);
@@ -210,7 +217,7 @@ export const getTop10Keno24h = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Keno Analytics 24h Error:", error);
+        console.error("Keno Analytics Recent Error:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
