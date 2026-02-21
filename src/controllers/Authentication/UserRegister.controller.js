@@ -387,6 +387,39 @@ export const saveFcmToken = async (req, res) => {
   res.json({ success: true, message: "FCM token saved successfully" });
 };
 
+// @desc Logout user
+// @route POST /api/logout
+// @access Private
+export const logoutUser = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { token } = req.body; // FCM token to remove
+
+    if (token) {
+      await User.findByIdAndUpdate(userId, {
+        $pull: { fcmTokens: token },
+      });
+      console.log(`FCM token removed for user ${userId}`);
+    }
+
+    // Emit Logout Event
+    eventBus.emit(EVENTS.USER_LOGGED_OUT, { userId, timestamp: new Date() });
+
+    console.log(`✅ User ${userId} logged out`);
+
+    res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (error) {
+    console.error("Logout Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error during logout",
+    });
+  }
+};
+
 // @desc Delete user account and all associated data
 // @route DELETE /api/delete-account
 // @access Private (requires authentication)
