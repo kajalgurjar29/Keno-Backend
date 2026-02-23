@@ -109,6 +109,18 @@ export const scrapeNSWKenobyGame = async () => {
     try {
       ({ browser, page } = await launchBrowser());
 
+      // 🛰️ LIVE DATA FIX: Redirect ACT requests to NSW
+      await page.setRequestInterception(true);
+      page.on('request', interceptedRequest => {
+        let url = interceptedRequest.url();
+        if (url.includes('api-info') && url.includes('jurisdiction=ACT')) {
+          const newUrl = url.replace('api-info-act', 'api-info-nsw').replace('jurisdiction=ACT', 'jurisdiction=NSW');
+          interceptedRequest.continue({ url: newUrl });
+        } else {
+          interceptedRequest.continue();
+        }
+      });
+
       console.log("✈️ Navigating to:", targetUrl);
       const response = await page.goto(targetUrl, {
         waitUntil: "domcontentloaded",
@@ -219,6 +231,29 @@ export const scrapeNSWKenobyGame = async () => {
       });
 
       console.log(`📊 Scraped ${games.length} games from the page.`);
+
+      // 📡 LIVE API FETCH: Capture absolute latest game from KDS
+      try {
+        const liveGame = await page.evaluate(async () => {
+          const res = await fetch("https://api-info-nsw.keno.com.au/v2/games/kds?jurisdiction=NSW");
+          const data = await res.json();
+          if (data && data.current && data.current.draw) {
+            return {
+              draw: String(data.current["game-number"]),
+              numbers: data.current.draw,
+              bonus: data.current.variants?.bonus || "REG"
+            };
+          }
+          return null;
+        });
+
+        if (liveGame && !games.find(g => g.draw === liveGame.draw)) {
+          console.log(`📡 NSW: Found live game via API: Draw ${liveGame.draw}`);
+          const dateInput = await page.evaluate(() => document.querySelector('input[data-id="check-results-date-input"]')?.value?.trim());
+          const currentDate = dateInput || new Date().toLocaleDateString('en-AU').replace(/\//g, '-');
+          games.push({ ...liveGame, date: currentDate, rawText: "" });
+        }
+      } catch (ae) { console.warn("⚠️ NSW Live API fetch failed:", ae.message); }
 
       const results = [];
       for (const game of games) {

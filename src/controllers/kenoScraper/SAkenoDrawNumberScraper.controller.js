@@ -129,7 +129,31 @@ export const scrapeSAKenoByGame = async () => {
         }).filter(g => g.draw && g.numbers.length >= 20);
       });
 
-      console.log(`📊 SA: Scraped ${games.length} games.`);
+      console.log(`📊 SA: Scraped ${games.length} games from DOM.`);
+
+      // 📡 LIVE API FETCH: Get the absolute latest game directly from KDS API
+      try {
+        const liveGame = await page.evaluate(async () => {
+          const res = await fetch("https://api-info-sa.keno.com.au/v2/games/kds?jurisdiction=SA");
+          const data = await res.json();
+          if (data && data.current && data.current.draw) {
+            return {
+              draw: String(data.current["game-number"]),
+              numbers: data.current.draw,
+              result: data.current.variants?.["heads-or-tails"]?.result,
+              bonus: data.current.variants?.bonus || "REG"
+            };
+          }
+          return null;
+        });
+
+        if (liveGame && !games.find(g => g.draw === liveGame.draw)) {
+          console.log(`📡 SA: Found live game via API: Draw ${liveGame.draw}`);
+          const dateInput = await page.evaluate(() => document.querySelector('input[data-id="check-results-date-input"]')?.value?.trim());
+          const currentDate = dateInput || new Date().toLocaleDateString('en-AU').replace(/\//g, '-');
+          games.push({ ...liveGame, date: currentDate, rawText: "" });
+        }
+      } catch (apiErr) { console.warn("⚠️ SA Live API fetch failed:", apiErr.message); }
 
       for (const game of games) {
         game.numbers = filterIncreasingNumbers(game.numbers).slice(0, 20);

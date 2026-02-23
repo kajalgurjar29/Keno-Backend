@@ -70,6 +70,19 @@ export const scrapeACTKenoByGame = async () => {
     let browser, page;
     try {
       ({ browser, page } = await launchBrowser());
+
+      // 🛰️ LIVE DATA FIX: Explicitly force ACT requests
+      await page.setRequestInterception(true);
+      page.on('request', interceptedRequest => {
+        let url = interceptedRequest.url();
+        if (url.includes('api-info') && (url.includes('jurisdiction=VIC') || url.includes('jurisdiction=NSW') || url.includes('jurisdiction=SA'))) {
+          const newUrl = url.replace(/api-info-(vic|nsw|sa)/, 'api-info-act').replace(/jurisdiction=(VIC|NSW|SA)/, 'jurisdiction=ACT');
+          interceptedRequest.continue({ url: newUrl });
+        } else {
+          interceptedRequest.continue();
+        }
+      });
+
       console.log("✈️ ACT: Navigating to results page...");
       const response = await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
       if (!response || !response.ok()) throw new Error(`Bad response: ${response?.status()}`);
@@ -116,7 +129,30 @@ export const scrapeACTKenoByGame = async () => {
         }).filter(g => g.draw && g.numbers.length >= 20);
       });
 
-      console.log(`📊 ACT: Scraped ${games.length} games.`);
+      console.log(`📊 ACT: Scraped ${games.length} games from DOM.`);
+
+      // 📡 LIVE API FETCH: Capture absolute latest game from KDS
+      try {
+        const liveGame = await page.evaluate(async () => {
+          const res = await fetch("https://api-info-act.keno.com.au/v2/games/kds?jurisdiction=ACT");
+          const data = await res.json();
+          if (data && data.current && data.current.draw) {
+            return {
+              draw: String(data.current["game-number"]),
+              numbers: data.current.draw,
+              bonus: data.current.variants?.bonus || "REG"
+            };
+          }
+          return null;
+        });
+
+        if (liveGame && !games.find(g => g.draw === liveGame.draw)) {
+          console.log(`📡 ACT: Found live game via API: Draw ${liveGame.draw}`);
+          const dateInput = await page.evaluate(() => document.querySelector('input[data-id="check-results-date-input"]')?.value?.trim());
+          const currentDate = dateInput || new Date().toLocaleDateString('en-AU').replace(/\//g, '-');
+          games.push({ ...liveGame, date: currentDate, rawText: "" });
+        }
+      } catch (ae) { console.warn("⚠️ ACT Live API fetch failed:", ae.message); }
 
       for (const game of games) {
         game.numbers = filterIncreasingNumbers(game.numbers).slice(0, 20);
