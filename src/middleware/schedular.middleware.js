@@ -18,64 +18,44 @@ schedule.scheduleJob("0 9 * * *", async () => {
   }
 });
 
-// 🟢 NSW Scraper Scheduler (every 1 minute)
-let runningNSW = false;
+// 🟢 Consolidated Keno Scraper Scheduler (Sequential to save RAM)
+let runningKeno = false;
 schedule.scheduleJob("*/1 * * * *", async () => {
-  if (runningNSW) return;
-  runningNSW = true;
-  console.log("🕐 NSW Job triggered at", new Date().toLocaleString());
-  try {
-    const result = await scrapeNSWKenobyGame();
-    console.log("✅ NSW Scraped:", result ? result.draw : "no new data");
-  } catch (err) {
-    console.error("❌ NSW Scraper error:", err.message);
-  }
-  runningNSW = false;
-});
+  if (runningKeno) return;
+  runningKeno = true;
+  console.log("🕐 Keno Sequential Job started at", new Date().toLocaleString());
 
-// 🟢 VIC Scraper Scheduler (every 1 minute)
-let runningVIC = false;
-schedule.scheduleJob("*/1 * * * *", async () => {
-  if (runningVIC) return;
-  runningVIC = true;
-  console.log("🕐 VIC Job triggered at", new Date().toLocaleString());
   try {
-    const result = await scrapeVICKenoByGame();
-    console.log("✅ VIC Scraped:", result ? result.draw : "no new data");
-  } catch (err) {
-    console.error("❌ VIC Scraper error:", err.message);
-  }
-  runningVIC = false;
-});
+    // NSW
+    try {
+      const nsw = await scrapeNSWKenobyGame();
+      console.log("✅ NSW Scraped:", nsw ? nsw.draw : "no new data");
+    } catch (e) { console.error("❌ NSW Job failed:", e.message); }
 
-// 🟢 ACT Scraper Scheduler (every 1 minute)
-let runningACT = false;
-schedule.scheduleJob("*/1 * * * *", async () => {
-  if (runningACT) return;
-  runningACT = true;
-  console.log("🕐 ACT Job triggered at", new Date().toLocaleString());
-  try {
-    const result = await scrapeACTKenoByGame();
-    console.log("✅ ACT Scraped:", result ? result.draw : "no new data");
-  } catch (err) {
-    console.error("❌ ACT Scraper error:", err.message);
-  }
-  runningACT = false;
-});
+    // VIC
+    try {
+      const vic = await scrapeVICKenoByGame();
+      console.log("✅ VIC Scraped:", vic ? vic.draw : "no new data");
+    } catch (e) { console.error("❌ VIC Job failed:", e.message); }
 
-// 🟢 SA Scraper Scheduler (every 1 minute)
-let runningSA = false;
-schedule.scheduleJob("*/1 * * * *", async () => {
-  if (runningSA) return;
-  runningSA = true;
-  console.log("🕐 SA Job triggered at", new Date().toLocaleString());
-  try {
-    const result = await scrapeSAKenoByGame();
-    console.log("✅ SA Scraped:", result ? result.draw : "no new data");
+    // ACT
+    try {
+      const act = await scrapeACTKenoByGame();
+      console.log("✅ ACT Scraped:", act ? act.draw : "no new data");
+    } catch (e) { console.error("❌ ACT Job failed:", e.message); }
+
+    // SA
+    try {
+      const sa = await scrapeSAKenoByGame();
+      console.log("✅ SA Scraped:", sa ? sa.draw : "no new data");
+    } catch (e) { console.error("❌ SA Job failed:", e.message); }
+
   } catch (err) {
-    console.error("❌ SA Scraper error:", err.message);
+    console.error("❌ Keno Macro Job error:", err.message);
+  } finally {
+    runningKeno = false;
+    console.log("🏁 Keno Sequential Job finished.");
   }
-  runningSA = false;
 });
 
 // 🟢 TrackSide Scheduler (every 5 minutes)

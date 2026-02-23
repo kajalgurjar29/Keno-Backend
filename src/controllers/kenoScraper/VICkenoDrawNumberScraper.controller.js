@@ -94,10 +94,26 @@ export const scrapeVICKenoByGame = async () => {
 
       await new Promise(r => setTimeout(r, 5000));
 
-      // Dismiss popups
+      // 🔍 Dismiss any popups that might be blocking the view
       await page.evaluate(() => {
-        const closeSelectors = ['[data-id="close-login-dialog-button"]', '.close-button', '.modal-ok-button'];
-        closeSelectors.forEach(s => { document.querySelector(s)?.click(); });
+        const closeSelectors = [
+          '[data-id="close-login-dialog-button"]',
+          '[data-id="close-continuous-play-modal-button"]',
+          '[data-id="reward-game-expiring-modal-close"]',
+          '[data-id="new-rewards-modal-close"]',
+          '[data-id="feature-highlight-modal-close"]',
+          '[data-id="suspended-account-modal-close-button"]',
+          '[data-id="locked-account-modal-close-button"]',
+          '[data-id="close-spend-limit-modal-button"]',
+          '.close-button',
+          '.modal-ok-button'
+        ];
+        closeSelectors.forEach(s => {
+          const btn = document.querySelector(s);
+          if (btn && typeof btn.click === 'function') {
+            btn.click();
+          }
+        });
       });
 
       // 🔁 Switch to VIC region
@@ -163,6 +179,7 @@ export const scrapeVICKenoByGame = async () => {
         }
       } catch (ae) { console.warn("⚠️ VIC Live API fetch failed:", ae.message); }
 
+      const resultsList = [];
       for (const game of games) {
         if (game.numbers.length < 20) {
           console.warn(`⚠️ skipping draw ${game.draw} - incomplete numbers (${game.numbers.length})`);
@@ -185,7 +202,6 @@ export const scrapeVICKenoByGame = async () => {
           if (cleaned.length > 5 || /login|account|heads|wins/i.test(cleaned)) return "REG";
           return cleaned || "REG";
         };
-        // Simple heuristic for bonus from raw text
         const lines = game.rawText.split('\n');
         game.bonus = sanitizeBonus(lines[lines.length - 1]);
 
@@ -193,20 +209,20 @@ export const scrapeVICKenoByGame = async () => {
         game.location = "VIC";
 
         try {
-          await KenoResult.updateOne({ drawid: game.drawid }, { $setOnInsert: game }, { upsert: true }).then(res => {
-            if (res.upsertedCount > 0) {
-              console.log(`✅ VIC Inserted: Draw ${game.draw}`);
-              try {
-                const io = getIO();
-                io.emit("newResult", { type: "KENO", location: "VIC", ...game });
-                eventBus.emit(EVENTS.NEW_RESULT_PUBLISHED, { type: "KENO", location: "VIC", data: game });
-              } catch (_) { }
-            }
-          });
+          const res = await KenoResult.updateOne({ drawid: game.drawid }, { $setOnInsert: game }, { upsert: true });
+          if (res.upsertedCount > 0) {
+            console.log(`✅ VIC Inserted: Draw ${game.draw}`);
+            resultsList.push(game);
+            try {
+              const io = getIO();
+              io.emit("newResult", { type: "KENO", location: "VIC", ...game });
+              eventBus.emit(EVENTS.NEW_RESULT_PUBLISHED, { type: "KENO", location: "VIC", data: game });
+            } catch (_) { }
+          }
         } catch (dbErr) { console.error(`❌ VIC DB error:`, dbErr.message); }
       }
       await safeClose(browser);
-      return games.length > 0 ? games[games.length - 1] : null;
+      return resultsList.length > 0 ? resultsList[resultsList.length - 1] : (games.length > 0 ? games[games.length - 1] : null);
     } catch (err) {
       console.error("❌ VIC Scraper failed:", err.message);
       await safeClose(browser);
