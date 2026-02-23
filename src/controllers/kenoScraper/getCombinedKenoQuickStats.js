@@ -67,10 +67,32 @@ export const getCombinedKenoQuickStats = async (req, res) => {
     );
     const totalDraws = totalDrawsPerState.reduce((a, b) => a + b, 0);
 
-    // Final response
-    const finalStats = Array.from(statsMap.values()).map((item) => {
+    // Sort by lastSeen ascending (oldest first = longest drought)
+    const sortedByDrought = Array.from(statsMap.values()).sort((a, b) => {
+      if (!a.lastSeen && !b.lastSeen) return 0;
+      if (!a.lastSeen) return -1;
+      if (!b.lastSeen) return 1;
+      return new Date(a.lastSeen) - new Date(b.lastSeen);
+    }).slice(0, 10);
+
+    // Final response - Process only the top 10 longest droughts
+    const finalStats = await Promise.all(sortedByDrought.map(async (item) => {
       const formattedDate = item.lastSeen ? new Date(item.lastSeen).toLocaleDateString('en-AU') : "-";
       const winPercent = totalDraws ? parseFloat(((item.entries / totalDraws) * 100).toFixed(2)) : 0;
+
+      // Calculate exact drought (count of games after lastSeen globally)
+      let drought = 0;
+      if (item.lastSeen) {
+        const droughtCounts = await Promise.all(MODELS.map(model =>
+          model.countDocuments({
+            createdAt: { $gt: item.lastSeen },
+            numbers: { $size: 20 }
+          })
+        ));
+        drought = droughtCounts.reduce((a, b) => a + b, 0);
+      } else {
+        drought = totalDraws; // Never seen in the current dataset
+      }
 
       // Define Status and Color logic for UI
       let status = "Normal";
@@ -78,6 +100,7 @@ export const getCombinedKenoQuickStats = async (req, res) => {
       let isCold = false;
       let recommended = false;
 
+      // Numbers with long droughts are typically "Cold" or "Overdue"
       if (winPercent >= 26) {
         status = "Very Hot";
         isHot = true;
@@ -103,10 +126,11 @@ export const getCombinedKenoQuickStats = async (req, res) => {
         isCold,           // For blue glows/colors
         recommended,      // For "Smart Pick" badges
         lastSeen: formattedDate,
-        lastWin: formattedDate,
+        lastWin: drought, // Changed from date to drought count as requested
+        drought: drought,
         totalRaces: totalDraws,
       };
-    });
+    }));
 
     // Aggregation for Heads/Tails/Evens counts
     const headsTailsPipeline = [
