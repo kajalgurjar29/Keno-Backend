@@ -15,13 +15,9 @@ stealth.enabledEvasions.delete("navigator.plugins");
 stealth.enabledEvasions.delete("navigator.webdriver");
 puppeteer.use(stealth);
 
-const filterIncreasingNumbers = (numbers) => {
-  const result = [];
-  for (let i = 0; i < numbers.length; i++) {
-    if (i === 0 || numbers[i] >= numbers[i - 1]) result.push(numbers[i]);
-    else break;
-  }
-  return result;
+// Sort numbers ascending for consistency
+const sortNumbers = (numbers) => {
+  return [...numbers].sort((a, b) => a - b);
 };
 
 const retry = async (fn, retries = 3, delay = 2000) => {
@@ -156,14 +152,19 @@ export const scrapeSAKenoByGame = async () => {
       } catch (apiErr) { console.warn("⚠️ SA Live API fetch failed:", apiErr.message); }
 
       for (const game of games) {
-        game.numbers = filterIncreasingNumbers(game.numbers).slice(0, 20);
+        if (game.numbers.length < 20) {
+          console.warn(`⚠️ skipping draw ${game.draw} - incomplete numbers (${game.numbers.length})`);
+          continue;
+        }
+        game.numbers = sortNumbers(game.numbers).slice(0, 20);
         const headsCount = game.numbers.filter(n => n >= 1 && n <= 40).length;
         const tailsCount = game.numbers.filter(n => n >= 41 && n <= 80).length;
         game.heads = headsCount;
         game.tails = tailsCount;
-        if (game.rawText.toLowerCase().includes("heads wins")) game.result = "Heads wins";
-        else if (game.rawText.toLowerCase().includes("tails wins")) game.result = "Tails wins";
-        else if (game.rawText.toLowerCase().includes("evens wins")) game.result = "Evens wins";
+        const rawResult = (game.result || "").toLowerCase();
+        if (game.rawText.toLowerCase().includes("heads wins") || rawResult.includes("heads")) game.result = "Heads wins";
+        else if (game.rawText.toLowerCase().includes("tails wins") || rawResult.includes("tails")) game.result = "Tails wins";
+        else if (game.rawText.toLowerCase().includes("evens wins") || rawResult.includes("evens")) game.result = "Evens wins";
         else game.result = headsCount > tailsCount ? "Heads wins" : (tailsCount > headsCount ? "Tails wins" : "Evens wins");
 
         const sanitizeBonus = (text) => {

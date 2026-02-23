@@ -33,9 +33,9 @@ schedule.scheduleJob("*/1 * * * *", async () => {
   runningNSW = false;
 });
 
-// 🟢 VIC Scraper Scheduler (every 2 minutes)
+// 🟢 VIC Scraper Scheduler (every 1 minute)
 let runningVIC = false;
-schedule.scheduleJob("*/2 * * * *", async () => {
+schedule.scheduleJob("*/1 * * * *", async () => {
   if (runningVIC) return;
   runningVIC = true;
   console.log("🕐 VIC Job triggered at", new Date().toLocaleString());
@@ -48,9 +48,9 @@ schedule.scheduleJob("*/2 * * * *", async () => {
   runningVIC = false;
 });
 
-// 🟢 ACT Scraper Scheduler (every 3 minutes)
+// 🟢 ACT Scraper Scheduler (every 1 minute)
 let runningACT = false;
-schedule.scheduleJob("*/3 * * * *", async () => {
+schedule.scheduleJob("*/1 * * * *", async () => {
   if (runningACT) return;
   runningACT = true;
   console.log("🕐 ACT Job triggered at", new Date().toLocaleString());
@@ -63,9 +63,9 @@ schedule.scheduleJob("*/3 * * * *", async () => {
   runningACT = false;
 });
 
-// 🟢 SA Scraper Scheduler (every 4 minutes)
+// 🟢 SA Scraper Scheduler (every 1 minute)
 let runningSA = false;
-schedule.scheduleJob("*/4 * * * *", async () => {
+schedule.scheduleJob("*/1 * * * *", async () => {
   if (runningSA) return;
   runningSA = true;
   console.log("🕐 SA Job triggered at", new Date().toLocaleString());

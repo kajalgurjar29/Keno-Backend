@@ -16,15 +16,9 @@ stealth.enabledEvasions.delete("navigator.plugins");
 stealth.enabledEvasions.delete("navigator.webdriver");
 puppeteer.use(stealth);
 
-// Filter to keep only increasing sequence (used as a secondary check)
-const filterIncreasingNumbers = (numbers) => {
-  const result = [];
-  for (let i = 0; i < numbers.length; i++) {
-    if (i === 0 || numbers[i] >= numbers[i - 1]) {
-      result.push(numbers[i]);
-    } else break;
-  }
-  return result;
+// Sort numbers ascending for consistency
+const sortNumbers = (numbers) => {
+  return [...numbers].sort((a, b) => a - b);
 };
 
 // Retry wrapper
@@ -241,6 +235,7 @@ export const scrapeNSWKenobyGame = async () => {
             return {
               draw: String(data.current["game-number"]),
               numbers: data.current.draw,
+              result: data.current.variants?.["heads-or-tails"]?.result,
               bonus: data.current.variants?.bonus || "REG"
             };
           }
@@ -257,18 +252,22 @@ export const scrapeNSWKenobyGame = async () => {
 
       const results = [];
       for (const game of games) {
-        // Post-process each game
-        game.numbers = filterIncreasingNumbers(game.numbers);
-        if (game.numbers.length > 20) game.numbers = game.numbers.slice(0, 20);
+        // Post-process each game: Ensure 20 numbers and sort them
+        if (game.numbers.length < 20) {
+          console.warn(`⚠️ skipping draw ${game.draw} - incomplete numbers (${game.numbers.length})`);
+          continue;
+        }
+        game.numbers = sortNumbers(game.numbers).slice(0, 20);
 
         const headsCount = game.numbers.filter((n) => n >= 1 && n <= 40).length;
         const tailsCount = game.numbers.filter((n) => n >= 41 && n <= 80).length;
         game.heads = headsCount;
         game.tails = tailsCount;
 
-        if (game.rawText.toLowerCase().includes("heads wins")) game.result = "Heads wins";
-        else if (game.rawText.toLowerCase().includes("tails wins")) game.result = "Tails wins";
-        else if (game.rawText.toLowerCase().includes("evens wins")) game.result = "Evens wins";
+        const rawResult = (game.result || "").toLowerCase();
+        if (game.rawText.toLowerCase().includes("heads wins") || rawResult.includes("heads")) game.result = "Heads wins";
+        else if (game.rawText.toLowerCase().includes("tails wins") || rawResult.includes("tails")) game.result = "Tails wins";
+        else if (game.rawText.toLowerCase().includes("evens wins") || rawResult.includes("evens")) game.result = "Evens wins";
         else {
           if (headsCount > tailsCount) game.result = "Heads wins";
           else if (tailsCount > headsCount) game.result = "Tails wins";
