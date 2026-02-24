@@ -3,6 +3,7 @@ import NSWKenoResult from "../../models/NSWkenoDrawResult.model.js";
 import VICKenoResult from "../../models/VICkenoDrawResult.model.js";
 import ACTKenoResult from "../../models/ACTkenoDrawResult.model.js";
 import SAKenoResult from "../../models/SAkenoDrawResult.model.js";
+import axios from "axios";
 
 const kenoModels = {
   NSW: NSWKenoResult,
@@ -10,6 +11,13 @@ const kenoModels = {
   ACT: ACTKenoResult,
   SA: SAKenoResult,
 };
+const kdsConfig = {
+  NSW: "https://api-info-nsw.keno.com.au/v2/games/kds?jurisdiction=NSW",
+  VIC: "https://api-info-vic.keno.com.au/v2/games/kds?jurisdiction=VIC",
+  ACT: "https://api-info-act.keno.com.au/v2/games/kds?jurisdiction=ACT",
+  SA: "https://api-info-sa.keno.com.au/v2/games/kds?jurisdiction=SA",
+};
+const MAX_DRAW_AHEAD = 0;
 
 const validNumbersFilter = {
   numbers: { $size: 20 },
@@ -22,24 +30,104 @@ const validNumbersFilter = {
 };
 
 const normalizeLocation = (location) => {
-  const value = String(location || "").toUpperCase();
+  const value = String(location || "").trim().toUpperCase();
   return kenoModels[value] ? value : null;
+};
+
+// keno.com.au "SA" live draw stream aligns with ACT draw feed.
+const resolveLiveJurisdiction = (location) => {
+  const normalized = normalizeLocation(location);
+  return normalized === "SA" ? "ACT" : normalized;
+};
+
+const drawNumFromValue = (value) => {
+  const n = Number(value);
+  return Number.isInteger(n) ? n : null;
+};
+
+const fetchLiveDrawCeiling = async (location) => {
+  const endpoint = kdsConfig[resolveLiveJurisdiction(location)];
+  if (!endpoint) return null;
+  try {
+    const { data } = await axios.get(endpoint, { timeout: 10000, proxy: false });
+    return drawNumFromValue(data?.current?.["game-number"]);
+  } catch {
+    return null;
+  }
 };
 
 const getLatestKenoRecord = async (location) => {
   const normalized = normalizeLocation(location);
 
   if (normalized) {
-    return kenoModels[normalized]
-      .findOne(validNumbersFilter)
-      .sort({ createdAt: -1 })
-      .lean();
+    const sourceLocation = resolveLiveJurisdiction(normalized);
+    const ceiling = await fetchLiveDrawCeiling(sourceLocation);
+    const pipeline = [
+      { $match: validNumbersFilter },
+      {
+        $addFields: {
+          drawNum: {
+            $convert: {
+              input: "$draw",
+              to: "int",
+              onError: -1,
+              onNull: -1,
+            },
+          },
+        },
+      },
+    ];
+
+    if (Number.isInteger(ceiling)) {
+      pipeline.push({
+        $match: { drawNum: { $lte: ceiling + MAX_DRAW_AHEAD } },
+      });
+    }
+
+    pipeline.push(
+      { $sort: { createdAt: -1, drawNum: -1 } },
+      { $limit: 1 },
+      { $project: { drawNum: 0 } },
+    );
+
+    const [latest] = await kenoModels[sourceLocation].aggregate(pipeline);
+    return latest || null;
   }
 
   const latestByState = await Promise.all(
-    Object.values(kenoModels).map((Model) =>
-      Model.findOne(validNumbersFilter).sort({ createdAt: -1 }).lean()
-    )
+    Object.entries(kenoModels).map(async ([loc, Model]) => {
+      const ceiling = await fetchLiveDrawCeiling(loc);
+      const pipeline = [
+        { $match: validNumbersFilter },
+        {
+          $addFields: {
+            drawNum: {
+              $convert: {
+                input: "$draw",
+                to: "int",
+                onError: -1,
+                onNull: -1,
+              },
+            },
+          },
+        },
+      ];
+
+      if (Number.isInteger(ceiling)) {
+        pipeline.push({
+          $match: { drawNum: { $lte: ceiling + MAX_DRAW_AHEAD } },
+        });
+      }
+
+      pipeline.push(
+        { $sort: { createdAt: -1, drawNum: -1 } },
+        { $limit: 1 },
+        { $project: { drawNum: 0 } },
+      );
+
+      const rows = await Model.aggregate(pipeline);
+      return rows[0] || null;
+    }),
   );
 
   return latestByState
@@ -160,14 +248,19 @@ export const getLatestResults = async (req, res) => {
     }
 
     /* ================= KENO ================= */
-    const keno = await getLatestKenoRecord(req.query.location);
+    // Make default behavior deterministic for clients that do not pass `location`.
+    // This avoids cross-jurisdiction draw mismatches (e.g. ACT vs SA draw numbers).
+    const requestedLocation = normalizeLocation(req.query.location) || "NSW";
+    const sourceLocation = resolveLiveJurisdiction(requestedLocation);
+    const keno = await getLatestKenoRecord(requestedLocation);
 
     const kenoData = keno
       ? {
           draw: keno.draw,
           date: keno.date,
           numbers: keno.numbers,
-          location: keno.location,
+          location: requestedLocation,
+          upstreamJurisdiction: sourceLocation,
           heads: keno.heads,
           tails: keno.tails,
           result: keno.result,

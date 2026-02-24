@@ -5,19 +5,26 @@ import ACTKeno from "../../models/ACTkenoDrawResult.model.js";
 import SAKeno from "../../models/SAkenoDrawResult.model.js";
 
 const normalizeLocation = (location) => {
-  switch (String(location || "NSW").toUpperCase()) {
+  const normalized = String(location || "NSW").trim().toUpperCase();
+  switch (normalized) {
     case "VIC":
     case "ACT":
     case "SA":
     case "NSW":
-      return String(location).toUpperCase();
+      return normalized;
     default:
       return "NSW";
   }
 };
 
+// keno.com.au "SA" live draw stream aligns with ACT draw feed.
+const resolveLiveJurisdiction = (location) => {
+  const normalized = normalizeLocation(location);
+  return normalized === "SA" ? "ACT" : normalized;
+};
+
 const getModel = (location) => {
-  switch (normalizeLocation(location)) {
+  switch (resolveLiveJurisdiction(location)) {
     case "VIC": return VICKeno;
     case "ACT": return ACTKeno;
     case "SA": return SAKeno;
@@ -31,6 +38,7 @@ const kdsConfig = {
   ACT: "https://api-info-act.keno.com.au/v2/games/kds?jurisdiction=ACT",
   SA: "https://api-info-sa.keno.com.au/v2/games/kds?jurisdiction=SA",
 };
+const MAX_DRAW_AHEAD = 0;
 
 const validNumbersFilter = {
   numbers: { $size: 20 },
@@ -40,6 +48,60 @@ const validNumbersFilter = {
       { $size: { $setUnion: ["$numbers", []] } },
     ],
   },
+};
+
+const drawNumFromValue = (value) => {
+  const n = Number(value);
+  return Number.isInteger(n) ? n : null;
+};
+
+const fetchLiveDrawCeiling = async (location) => {
+  const jurisdiction = resolveLiveJurisdiction(location);
+  const endpoint = kdsConfig[jurisdiction];
+  if (!endpoint) return null;
+  try {
+    const { data } = await axios.get(endpoint, { timeout: 10000, proxy: false });
+    return drawNumFromValue(data?.current?.["game-number"]);
+  } catch {
+    return null;
+  }
+};
+
+const getLatestByDraw = async (Model, location, knownCeiling = null) => {
+  const ceiling = Number.isInteger(knownCeiling)
+    ? knownCeiling
+    : await fetchLiveDrawCeiling(location);
+
+  const pipeline = [
+    { $match: validNumbersFilter },
+    {
+      $addFields: {
+        drawNum: {
+          $convert: {
+            input: "$draw",
+            to: "int",
+            onError: -1,
+            onNull: -1,
+          },
+        },
+      },
+    },
+  ];
+
+  if (Number.isInteger(ceiling)) {
+    pipeline.push({
+      $match: { drawNum: { $lte: ceiling + MAX_DRAW_AHEAD } },
+    });
+  }
+
+  pipeline.push(
+    { $sort: { createdAt: -1, drawNum: -1 } },
+    { $limit: 1 },
+    { $project: { drawNum: 0 } },
+  );
+
+  const [latest] = await Model.aggregate(pipeline);
+  return latest || null;
 };
 
 const parseLiveResultLabel = (label, heads, tails) => {
@@ -54,10 +116,11 @@ const parseLiveResultLabel = (label, heads, tails) => {
 
 const fetchLiveKenoFromApi = async (location) => {
   const normalizedLocation = normalizeLocation(location);
-  const endpoint = kdsConfig[normalizedLocation];
+  const jurisdiction = resolveLiveJurisdiction(normalizedLocation);
+  const endpoint = kdsConfig[jurisdiction];
   if (!endpoint) return null;
 
-  const { data } = await axios.get(endpoint, { timeout: 10000 });
+  const { data } = await axios.get(endpoint, { timeout: 10000, proxy: false });
   const current = data?.current;
   const rawDraw = current?.["game-number"];
   const rawNumbers = Array.isArray(current?.draw) ? current.draw : [];
@@ -80,6 +143,7 @@ const fetchLiveKenoFromApi = async (location) => {
     date: new Date().toISOString(),
     numbers,
     location: normalizedLocation,
+    upstreamJurisdiction: jurisdiction,
     heads,
     tails,
     result: parseLiveResultLabel(current?.variants?.["heads-or-tails"]?.result, heads, tails),
@@ -92,17 +156,20 @@ const fetchLiveKenoFromApi = async (location) => {
 export const getLiveKenoResult = async (req, res) => {
   try {
     const location = normalizeLocation(req.query.location);
+    let liveDrawCeiling = null;
 
     // 1) Prefer real-time KDS API for true live data
     try {
       const liveData = await fetchLiveKenoFromApi(location);
       if (liveData) {
+        liveDrawCeiling = drawNumFromValue(liveData.draw);
         return res.status(200).json({
           label: `Keno ${location}`,
           draw: liveData.draw,
           date: liveData.date,
           numbers: liveData.numbers,
           location: liveData.location,
+          upstreamJurisdiction: liveData.upstreamJurisdiction,
           heads: liveData.heads,
           tails: liveData.tails,
           result: liveData.result,
@@ -118,8 +185,7 @@ export const getLiveKenoResult = async (req, res) => {
     // 2) Fallback to latest completed DB record
     const Model = getModel(location);
 
-    const result = await Model.findOne(validNumbersFilter)
-      .sort({ createdAt: -1 });
+    const result = await getLatestByDraw(Model, location, liveDrawCeiling);
 
     if (!result) {
       return res.status(404).json({
@@ -128,11 +194,12 @@ export const getLiveKenoResult = async (req, res) => {
     }
 
     res.status(200).json({
-      label: `Keno ${result.location || location}`,
+      label: `Keno ${location}`,
       draw: result.draw,
       date: result.date,
       numbers: result.numbers,
-      location: result.location || location,
+      location,
+      upstreamJurisdiction: resolveLiveJurisdiction(location),
       heads: result.heads,
       tails: result.tails,
       result: result.result,
@@ -153,11 +220,38 @@ export const getKenoDrawHistory = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const skip = (page - 1) * limit;
     const Model = getModel(location);
+    const liveDrawCeiling = await fetchLiveDrawCeiling(location);
 
-    const results = await Model.find(validNumbersFilter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    const pipeline = [
+      { $match: validNumbersFilter },
+      {
+        $addFields: {
+          drawNum: {
+            $convert: {
+              input: "$draw",
+              to: "int",
+              onError: -1,
+              onNull: -1,
+            },
+          },
+        },
+      },
+    ];
+
+    if (Number.isInteger(liveDrawCeiling)) {
+      pipeline.push({
+        $match: { drawNum: { $lte: liveDrawCeiling + MAX_DRAW_AHEAD } },
+      });
+    }
+
+    pipeline.push(
+      { $sort: { createdAt: -1, drawNum: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+      { $project: { drawNum: 0 } },
+    );
+
+    const results = await Model.aggregate(pipeline);
 
     const formattedData = results.map((item) => ({
       race: `#${item.draw}`,
@@ -186,10 +280,37 @@ export const getKenoHeadsTailsHistory = async (req, res) => {
     const location = normalizeLocation(req.query.location);
     const limit = parseInt(req.query.limit) || 20;
     const Model = getModel(location);
+    const liveDrawCeiling = await fetchLiveDrawCeiling(location);
 
-    const results = await Model.find(validNumbersFilter)
-      .sort({ createdAt: -1 })
-      .limit(limit);
+    const pipeline = [
+      { $match: validNumbersFilter },
+      {
+        $addFields: {
+          drawNum: {
+            $convert: {
+              input: "$draw",
+              to: "int",
+              onError: -1,
+              onNull: -1,
+            },
+          },
+        },
+      },
+    ];
+
+    if (Number.isInteger(liveDrawCeiling)) {
+      pipeline.push({
+        $match: { drawNum: { $lte: liveDrawCeiling + MAX_DRAW_AHEAD } },
+      });
+    }
+
+    pipeline.push(
+      { $sort: { createdAt: -1, drawNum: -1 } },
+      { $limit: limit },
+      { $project: { drawNum: 0 } },
+    );
+
+    const results = await Model.aggregate(pipeline);
 
     const tableData = results.map((item) => ({
       draw: item.draw,

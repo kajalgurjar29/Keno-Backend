@@ -8,6 +8,7 @@ import { exec } from "child_process";
 import { getChromiumPath } from "../../utils/chromiumPath.js";
 import KenoResult from "../../models/SAkenoDrawResult.model.js";
 import util from "util";
+import axios from "axios";
 import { getIO } from "../../utils/socketUtils.js";
 import eventBus, { EVENTS } from "../../utils/eventBus.js";
 const execAsync = util.promisify(exec);
@@ -24,152 +25,300 @@ const sortNumbers = (numbers) => {
 };
 
 const normalizeKenoNumbers = (numbers = []) => {
-  const unique = [...new Set(
-    numbers
-      .map((n) => Number(n))
-      .filter((n) => Number.isInteger(n) && n >= 1 && n <= 80)
-  )];
+  const unique = [
+    ...new Set(
+      numbers
+        .map((n) => Number(n))
+        .filter((n) => Number.isInteger(n) && n >= 1 && n <= 80),
+    ),
+  ];
   return sortNumbers(unique);
 };
 
-const hasValidKenoNumbers = (numbers = []) => (
+const hasValidKenoNumbers = (numbers = []) =>
   Array.isArray(numbers) &&
   numbers.length === 20 &&
-  new Set(numbers).size === 20
-);
+  new Set(numbers).size === 20;
+
+const sameNumbers = (a = [], b = []) =>
+  Array.isArray(a) &&
+  Array.isArray(b) &&
+  a.length === b.length &&
+  a.every((n, idx) => n === b[idx]);
 
 const validNumbersExpr = {
   $expr: {
-    $eq: [
-      { $size: "$numbers" },
-      { $size: { $setUnion: ["$numbers", []] } },
-    ],
+    $eq: [{ $size: "$numbers" }, { $size: { $setUnion: ["$numbers", []] } }],
   },
 };
 
-// Scraper function
-export const scrapeSAKeno = async () => {
-  //  Proxy details
-  const proxyHost = process.env.PROXY_HOST || "au.decodo.com";
-  const proxyPort = process.env.PROXY_PORT || "30001";
-  const proxyUser = process.env.PROXY_USER_SA || "spr1wu95yq";
-  const proxyPass = process.env.PROXY_PASS_SA || "w06feLHNn1Cma3=ioy";
+const SA_KDS_ENDPOINT =
+  "https://api-info-sa.keno.com.au/v2/games/kds?jurisdiction=SA";
+const SA_HISTORY_ENDPOINT =
+  "https://api-info-sa.keno.com.au/v2/info/history?jurisdiction=SA";
+const MAX_DRAW_AHEAD = 0;
 
-  const proxyUrl = `http://${proxyHost}:${proxyPort}`;
-  const args = [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
-    "--disable-dev-shm-usage",
-    `--proxy-server=${proxyUrl}`,
-  ];
+const formatSaRecordDate = (value) => {
+  const dt = value ? new Date(value) : new Date();
+  const validDate = Number.isNaN(dt.getTime()) ? new Date() : dt;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Australia/Adelaide",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  })
+    .format(validDate)
+    .split("/");
+  return `${parts[0]}-${parts[1]}-${parts[2]}`;
+};
 
-  const executablePath = process.env.CHROMIUM_PATH || chromium.executablePath;
+const sanitizeBonus = (text) => {
+  if (!text) return "REG";
+  const cleaned = String(text).trim();
+  if (
+    cleaned.length > 10 ||
+    /login|account|password|enter|details|ready|ended|heads|tails|wins/i.test(
+      cleaned,
+    )
+  ) {
+    return "REG";
+  }
+  return cleaned || "REG";
+};
 
-  let browser;
-  try {
-    browser = await puppeteer.launch({
-      headless: true,
-      executablePath,
-      args,
-    });
+const normalizeResultLabel = (rawResult, rawText, headsCount, tailsCount) => {
+  const result = String(rawResult || "").toLowerCase();
+  const text = String(rawText || "").toLowerCase();
+  if (text.includes("heads wins") || result.includes("heads"))
+    return "Heads wins";
+  if (text.includes("tails wins") || result.includes("tails"))
+    return "Tails wins";
+  if (text.includes("evens wins") || result.includes("evens"))
+    return "Evens wins";
+  if (headsCount > tailsCount) return "Heads wins";
+  if (tailsCount > headsCount) return "Tails wins";
+  return "Evens wins";
+};
 
-    const page = await browser.newPage();
+const drawNumFromValue = (value) => {
+  const n = Number(value);
+  return Number.isInteger(n) ? n : null;
+};
 
-    if (proxyUser && proxyPass) {
-      await page.authenticate({
-        username: proxyUser,
-        password: proxyPass,
-      });
-    }
+const dedupeByDraw = (games = []) => {
+  const byDraw = new Map();
+  for (const game of games) {
+    const draw = String(game?.draw || "").trim();
+    if (!draw) continue;
 
-    console.log("🌐 Navigating to Keno Results page...");
-    await page.goto("https://www.keno.com.au/check-results", {
-      waitUntil: "networkidle2",
-      timeout: 120000,
-    });
-
-    // ✅ Try to switch region to SA
-    try {
-      console.log("🔁 Switching to SA region...");
-      await page.waitForSelector('[data-id="check-results-region-selector"]', {
-        timeout: 15000,
-      });
-      await page.click('[data-id="check-results-region-selector"]');
-
-      await page.waitForTimeout(1000); // give dropdown time to open
-
-      await page.evaluate(() => {
-        const options = Array.from(
-          document.querySelectorAll('li[role="option"]'),
-        );
-        const sa = options.find((el) => el.textContent.includes("SA"));
-        if (sa) sa.click();
-      });
-
-      // ⚠️ ❌ REMOVE waitForNavigation() to avoid frame detach
-      // ✅ Instead, wait for the results container to update
-      await page.waitForSelector(".game-ball-wrapper", { timeout: 30000 });
-      await page.waitForTimeout(2000); // small delay to ensure data loads
-    } catch (e) {
-      console.warn("⚠️ Could not switch to SA automatically:", e.message);
-    }
-
-    // ✅ Debug current region
-    const currentRegion = await page.evaluate(() => {
-      return (
-        document
-          .querySelector('[data-id="check-results-region-selector"]')
-          ?.textContent?.trim() || "Unknown"
-      );
-    });
-    console.log("📍 Current region:", currentRegion);
-
-    console.log("⏳ Waiting for game numbers...");
-    await page.waitForSelector(".game-ball-wrapper:not(.is-blank)", {
-      timeout: 60000,
-    });
-
-    console.log("✅ Extracting results...");
-    const result = await page.evaluate(() => {
-      const balls = Array.from(
-        document.querySelectorAll(".game-ball-wrapper:not(.is-blank)"),
-      )
-        .map((el) => parseInt(el.textContent.trim(), 10))
-        .filter((n) => !isNaN(n));
-
-      const drawText =
-        document.querySelector(".game-board-status-heading")?.textContent ||
-        document.querySelector(".game-number")?.textContent ||
-        "";
-
-      const dateText =
-        document.querySelector('input[data-id="check-results-date-input"]')
-          ?.value || "";
-
-      return {
-        draw: drawText.replace(/[^\d]/g, ""),
-        date: dateText.trim(),
-        numbers: balls,
-      };
-    });
-
-    result.numbers = normalizeKenoNumbers(result.numbers);
-    if (!hasValidKenoNumbers(result.numbers)) {
-      throw new Error(`Invalid SA numbers extracted (${result.numbers.length})`);
-    }
-
-    console.log("🎯 Final SA Keno Result:", result);
-    return result;
-  } catch (err) {
-    console.error("❌ Scraping failed:", err.message);
-    console.error(err.stack);
-    throw err;
-  } finally {
-    if (browser) {
-      await browser.close();
-      console.log("🧹 Browser closed.");
+    const normalized = normalizeKenoNumbers(game.numbers || []);
+    const score =
+      normalized.length + (game.result ? 1 : 0) + (game.bonus ? 1 : 0);
+    const existing = byDraw.get(draw);
+    if (!existing || score > existing.score) {
+      byDraw.set(draw, { score, game: { ...game, draw, numbers: normalized } });
     }
   }
+  return Array.from(byDraw.values()).map((v) => v.game);
+};
+
+const getSaLiveDrawCeiling = async () => {
+  try {
+    const { data } = await axios.get(SA_KDS_ENDPOINT, {
+      timeout: 12000,
+      proxy: false,
+    });
+    return drawNumFromValue(data?.current?.["game-number"]);
+  } catch {
+    return null;
+  }
+};
+
+const fetchSaApiSnapshot = async () => {
+  try {
+    const [kdsRes, historyRes] = await Promise.all([
+      axios.get(SA_KDS_ENDPOINT, { timeout: 12000, proxy: false }),
+      axios.get(SA_HISTORY_ENDPOINT, { timeout: 12000, proxy: false }),
+    ]);
+
+    const current = kdsRes.data?.current || {};
+    const currentDrawNum = drawNumFromValue(current["game-number"]);
+    const currentDate = formatSaRecordDate(
+      current.receivedDrawingAt || new Date(),
+    );
+
+    const items = Array.isArray(historyRes.data?.items)
+      ? historyRes.data.items
+      : [];
+    const fromHistory = items.map((item) => ({
+      draw: String(item?.["game-number"] || ""),
+      date: formatSaRecordDate(item?.closed || new Date()),
+      numbers: Array.isArray(item?.draw) ? item.draw : [],
+      result: item?.variants?.["heads-or-tails"]?.result || "",
+      bonus: item?.variants?.bonus || "REG",
+      rawText: "",
+    }));
+
+    const allGames = [...fromHistory];
+    if (
+      currentDrawNum !== null &&
+      Array.isArray(current.draw) &&
+      current.draw.length > 0
+    ) {
+      allGames.push({
+        draw: String(currentDrawNum),
+        date: currentDate,
+        numbers: current.draw,
+        result: current?.variants?.["heads-or-tails"]?.result || "",
+        bonus: current?.variants?.bonus || "REG",
+        rawText: "",
+      });
+    }
+
+    return {
+      currentDrawNum,
+      games: dedupeByDraw(allGames),
+    };
+  } catch (err) {
+    console.warn("⚠️ SA API snapshot fetch failed:", err.message);
+    return { currentDrawNum: null, games: [] };
+  }
+};
+
+const pruneSaOutlierDraws = async (currentDrawNum) => {
+  if (!Number.isInteger(currentDrawNum)) return;
+  const cutoff = currentDrawNum + MAX_DRAW_AHEAD;
+  const result = await KenoResult.deleteMany({
+    $expr: {
+      $gt: [
+        {
+          $convert: {
+            input: "$draw",
+            to: "int",
+            onError: -1,
+            onNull: -1,
+          },
+        },
+        cutoff,
+      ],
+    },
+  });
+  if (result.deletedCount > 0) {
+    console.warn(
+      `🧹 SA cleaned ${result.deletedCount} outlier rows above draw ${cutoff}`,
+    );
+  }
+};
+
+const persistSaGames = async (games = [], options = {}) => {
+  const currentDrawNum = drawNumFromValue(options.currentDrawNum);
+  if (Number.isInteger(currentDrawNum)) {
+    await pruneSaOutlierDraws(currentDrawNum);
+  }
+
+  const dedupedGames = dedupeByDraw(games)
+    .map((game) => ({ ...game, draw: String(game.draw).trim() }))
+    .filter((game) => game.draw);
+
+  const filtered = dedupedGames.filter((game) => {
+    const drawNum = drawNumFromValue(game.draw);
+    if (drawNum === null) return false;
+    if (
+      Number.isInteger(currentDrawNum) &&
+      drawNum > currentDrawNum + MAX_DRAW_AHEAD
+    ) {
+      console.warn(
+        `⚠️ SA skipping suspicious draw ${game.draw} > live ${currentDrawNum}`,
+      );
+      return false;
+    }
+    return true;
+  });
+
+  filtered.sort((a, b) => Number(a.draw) - Number(b.draw));
+
+  const resultsList = [];
+
+  for (const game of filtered) {
+    game.numbers = normalizeKenoNumbers(game.numbers);
+    if (!hasValidKenoNumbers(game.numbers)) {
+      console.warn(
+        `⚠️ skipping draw ${game.draw} - invalid numbers (${game.numbers.length})`,
+      );
+      continue;
+    }
+
+    const headsCount = game.numbers.filter((n) => n >= 1 && n <= 40).length;
+    const tailsCount = game.numbers.filter((n) => n >= 41 && n <= 80).length;
+    game.heads = headsCount;
+    game.tails = tailsCount;
+    game.result = normalizeResultLabel(
+      game.result,
+      game.rawText,
+      headsCount,
+      tailsCount,
+    );
+    game.bonus = sanitizeBonus(game.bonus);
+    game.date = game.date || formatSaRecordDate(new Date());
+    game.drawid = `${game.draw}_${game.date}`;
+    game.location = "SA";
+
+    await retry(async () => {
+      const existing = await KenoResult.findOne({ drawid: game.drawid })
+        .select("_id numbers result bonus")
+        .lean();
+
+      let inserted = false;
+      if (!existing) {
+        await KenoResult.create(game);
+        inserted = true;
+      } else {
+        const existingNumbers = normalizeKenoNumbers(existing.numbers || []);
+        const invalidExisting = !hasValidKenoNumbers(existing.numbers || []);
+        const numberMismatch = !sameNumbers(existingNumbers, game.numbers);
+        const resultMismatch = (existing.result || "") !== (game.result || "");
+        const bonusMismatch =
+          (existing.bonus || "REG") !== (game.bonus || "REG");
+
+        if (
+          invalidExisting ||
+          numberMismatch ||
+          resultMismatch ||
+          bonusMismatch
+        ) {
+          await KenoResult.updateOne({ _id: existing._id }, { $set: game });
+          console.log(`🔧 SA corrected draw ${game.draw}`);
+        }
+      }
+
+      if (inserted) {
+        console.log(`✅ SA data inserted: ${game.draw} on ${game.date}`);
+        resultsList.push(game);
+        try {
+          const io = getIO();
+          io.emit("newResult", { type: "KENO", location: "SA", ...game });
+          eventBus.emit(EVENTS.NEW_RESULT_PUBLISHED, {
+            type: "KENO",
+            location: "SA",
+            data: game,
+          });
+        } catch (_) {}
+      }
+    });
+  }
+
+  const latestGame = filtered.length > 0 ? filtered[filtered.length - 1] : null;
+
+  return {
+    latestGame,
+    insertedCount: resultsList.length,
+    processedCount: filtered.length,
+  };
+};
+
+// Keep compatibility with existing route naming.
+export const scrapeSAKeno = async () => {
+  return scrapeSAKenoByGame();
 };
 
 const retry = async (fn, retries = 3, delay = 2000) => {
@@ -247,219 +396,310 @@ export const scrapeSAKenoByGame = async () => {
   const runScraperOnce = async () => {
     let browser, page;
     try {
+      const apiSnapshot = await fetchSaApiSnapshot();
+      if (apiSnapshot.games.length > 0) {
+        console.log(
+          `📡 SA API mode: ${apiSnapshot.games.length} games, current draw ${apiSnapshot.currentDrawNum ?? "n/a"}`,
+        );
+        const persisted = await persistSaGames(apiSnapshot.games, {
+          currentDrawNum: apiSnapshot.currentDrawNum,
+        });
+        if (persisted.latestGame) return persisted.latestGame;
+      }
+
       ({ browser, page } = await launchBrowser());
+
+      // Force SA requests when page defaults to another jurisdiction
+      await page.setRequestInterception(true);
+      page.on("request", (interceptedRequest) => {
+        const url = interceptedRequest.url();
+        if (
+          url.includes("api-info") &&
+          /jurisdiction=(VIC|NSW|ACT)/.test(url)
+        ) {
+          const newUrl = url
+            .replace(/api-info-(vic|nsw|act)/i, "api-info-sa")
+            .replace(/jurisdiction=(VIC|NSW|ACT)/, "jurisdiction=SA");
+          interceptedRequest.continue({ url: newUrl });
+        } else {
+          interceptedRequest.continue();
+        }
+      });
 
       const response = await page.goto(targetUrl, {
         waitUntil: "domcontentloaded",
-        timeout: 30000,
+        timeout: 45000,
       });
       if (!response || !response.ok())
         throw new Error(`Bad response: ${response?.status()}`);
 
-      // Check for Akamai block
-      const bodyText = await page.evaluate(() => document.body.innerText);
-      if (/Access Denied|blocked|verify/i.test(bodyText)) {
-        throw new Error("Blocked by Akamai (Access Denied)");
-      }
+      await new Promise((r) => setTimeout(r, 5000));
+
+      // Dismiss blocking modals/popups
+      await page.evaluate(() => {
+        const closeSelectors = [
+          '[data-id="close-login-dialog-button"]',
+          '[data-id="close-continuous-play-modal-button"]',
+          '[data-id="reward-game-expiring-modal-close"]',
+          '[data-id="new-rewards-modal-close"]',
+          '[data-id="feature-highlight-modal-close"]',
+          '[data-id="suspended-account-modal-close-button"]',
+          '[data-id="locked-account-modal-close-button"]',
+          '[data-id="close-spend-limit-modal-button"]',
+          ".close-button",
+          ".modal-ok-button",
+        ];
+        closeSelectors.forEach((s) => {
+          const btn = document.querySelector(s);
+          if (btn && typeof btn.click === "function") btn.click();
+        });
+      });
+
+      await new Promise((r) => setTimeout(r, 2000));
 
       // Switch region to SA
       try {
-        await page.waitForSelector(
-          '[data-id="check-results-region-selector"]',
-          {
-            timeout: 15000,
-          },
-        );
-        await page.click('[data-id="check-results-region-selector"]');
-        await page.waitForTimeout(1000);
-        await page.evaluate(() => {
-          const options = Array.from(
-            document.querySelectorAll('li[role="option"]'),
-          );
-          const sa = options.find((el) => el.textContent.includes("SA"));
-          if (sa) sa.click();
+        await page.waitForSelector('[data-id="selectedJurisdiction"]', {
+          timeout: 10000,
         });
-        await page.waitForSelector(".game-ball-wrapper", { timeout: 30000 });
-        await page.waitForTimeout(2000);
+        const currentRegion = await page.evaluate(() =>
+          document
+            .querySelector('[data-id="selectedJurisdiction"]')
+            ?.textContent?.trim(),
+        );
+        if (!currentRegion || !currentRegion.includes("SA")) {
+          console.log("📍 Switching region to SA...");
+          await page.click('[data-id="selectedJurisdiction"]');
+          await new Promise((r) => setTimeout(r, 1000));
+          await page.evaluate(() => {
+            const options = Array.from(
+              document.querySelectorAll('li[role="option"]'),
+            );
+            const sa = options.find((el) => el.textContent.includes("SA"));
+            if (sa) sa.click();
+          });
+          await new Promise((r) => setTimeout(r, 4000));
+        }
       } catch (e) {
-        console.warn("Could not switch to SA region:", e.message);
+        // Fallback for older selector on some deployments
+        try {
+          await page.waitForSelector(
+            '[data-id="check-results-region-selector"]',
+            { timeout: 8000 },
+          );
+          await page.click('[data-id="check-results-region-selector"]');
+          await new Promise((r) => setTimeout(r, 1000));
+          await page.evaluate(() => {
+            const options = Array.from(
+              document.querySelectorAll('li[role="option"]'),
+            );
+            const sa = options.find((el) => el.textContent.includes("SA"));
+            if (sa) sa.click();
+          });
+          await new Promise((r) => setTimeout(r, 4000));
+        } catch {
+          console.warn("Could not switch to SA region:", e.message);
+        }
       }
 
-      // Wait for results
-      await retry(() =>
-        page.waitForSelector(".game-ball-wrapper, .keno-ball", {
-          timeout: 15000,
-        }),
-      );
+      // Hard guard: do not ingest if SA jurisdiction is not selected
+      const activeRegion = await page.evaluate(() => {
+        return (
+          document
+            .querySelector('[data-id="selectedJurisdiction"]')
+            ?.textContent?.trim() ||
+          document
+            .querySelector('[data-id="check-results-region-selector"]')
+            ?.textContent?.trim() ||
+          ""
+        );
+      });
+      if (!String(activeRegion).includes("SA")) {
+        throw new Error(
+          `SA jurisdiction not active (current: ${activeRegion || "unknown"})`,
+        );
+      }
 
-      // Extract draw data
-      const data = await page.evaluate(() => {
-        const balls = Array.from(
-          document.querySelectorAll(".game-ball-wrapper, .keno-ball"),
-        )
-          .map((el) => parseInt(el.textContent.trim(), 10))
-          .filter((n) => !isNaN(n));
+      await page.waitForSelector(".game-board-grid", { timeout: 20000 });
 
-        const drawText =
-          document.querySelector(".game-board-status-heading")?.textContent ||
-          document.querySelector(".game-number")?.textContent ||
-          "";
+      const games = await page.evaluate(() => {
+        const dateInput = document.querySelector(
+          'input[data-id="check-results-date-input"]',
+        );
+        const currentDate = dateInput
+          ? dateInput.value.trim()
+          : new Date().toLocaleDateString("en-AU").replace(/\//g, "-");
 
-        const dateText =
-          document.querySelector('input[data-id="check-results-date-input"]')
-            ?.value || "";
+        const grids = Array.from(document.querySelectorAll(".game-board-grid"));
 
-        const bonusText =
-          document.querySelector(
-            ".game-results-status__multiplier-value, .game-status-bonus-value, .bonus-value, .game-bonus",
-          )?.textContent || "";
-        const headsTailsText =
-          document.querySelector(
-            ".game-results-status__heads-tails-value, .game-status-heads-tails-value, .heads-tails-value, .heads-tails",
-          )?.textContent || "";
+        return grids
+          .map((grid) => {
+            const heading =
+              grid.querySelector(".game-board-status-heading")?.textContent ||
+              grid.querySelector(".game-number")?.textContent ||
+              "";
+            const draw = heading.replace(/[^\d]/g, "");
+            const balls = Array.from(
+              grid.querySelectorAll(
+                ".game-ball-wrapper.is-drawn, .game-ball-wrapper.is-placed, .keno-ball.is-drawn, .keno-ball.is-placed",
+              ),
+            )
+              .map((el) => parseInt(el.textContent.trim(), 10))
+              .filter((n) => !isNaN(n));
 
-        // Fallback search by label if direct selectors fail
-        const findByLabel = (label) => {
-          const elements = Array.from(
-            document.querySelectorAll("div, span, p, dt, label"),
-          );
-          const match = elements.find((el) =>
-            el.textContent.trim().toLowerCase().includes(label.toLowerCase()),
-          );
-          if (!match) return "";
-          const parent = match.parentElement;
-          return (
-            parent
-              ?.querySelector("button, .pill, [class*='value'], .status-value")
-              ?.textContent?.trim() ||
-            match.nextElementSibling?.textContent?.trim() ||
-            ""
-          );
-        };
+            const findValueInGrid = (label) => {
+              const elements = Array.from(
+                grid.querySelectorAll("div, span, p, dt, label"),
+              );
+              const match = elements.find((el) =>
+                el.textContent
+                  .trim()
+                  .toLowerCase()
+                  .includes(label.toLowerCase()),
+              );
+              if (!match) return "";
+              const parent = match.parentElement;
+              return (
+                parent
+                  ?.querySelector(
+                    "button, .pill, [class*='value'], .status-value",
+                  )
+                  ?.textContent?.trim() ||
+                match.nextElementSibling?.textContent?.trim() ||
+                ""
+              );
+            };
 
-        const finalBonus = bonusText.trim() || findByLabel("bonus");
-        const finalHT = headsTailsText.trim() || findByLabel("heads or tails");
+            const bonusLabel =
+              grid
+                .querySelector(
+                  ".game-results-status__multiplier-value, .game-status-bonus-value, .bonus-value, .game-bonus",
+                )
+                ?.textContent?.trim() || findValueInGrid("bonus");
 
-        return {
-          draw: drawText.replace(/[^\d]/g, ""),
-          date: dateText.trim(),
-          numbers: balls,
-          bonus: finalBonus,
-          headsTailsLabel: finalHT,
-        };
+            const resultLabel =
+              grid
+                .querySelector(
+                  ".game-results-status__heads-tails-value, .game-status-heads-tails-value, .heads-tails-value, .heads-tails",
+                )
+                ?.textContent?.trim() ||
+              findValueInGrid("heads or tails") ||
+              "";
+
+            return {
+              draw,
+              date: currentDate,
+              numbers: balls,
+              bonus: bonusLabel,
+              result: resultLabel,
+              rawText: grid.innerText || "",
+            };
+          })
+          .filter((g) => g.draw && g.numbers.length >= 20);
       });
 
-      data.numbers = normalizeKenoNumbers(data.numbers);
-      if (!hasValidKenoNumbers(data.numbers)) {
-        throw new Error(`Invalid SA numbers extracted (${data.numbers.length})`);
-      }
+      console.log(`📊 SA: Scraped ${games.length} games from DOM.`);
 
-      // Calculate heads/tails stats
-      const headsCount = data.numbers.filter((n) => n >= 1 && n <= 40).length;
-      const tailsCount = data.numbers.filter((n) => n >= 41 && n <= 80).length;
-      data.heads = headsCount;
-      data.tails = tailsCount;
-
-      if (headsCount > tailsCount) data.result = "Heads wins";
-      else if (tailsCount > headsCount) data.result = "Tails wins";
-      else data.result = "Evens wins";
-
-      // Sanitizing bonus to avoid "junk text" from login/account sections
-      const sanitizeBonus = (text) => {
-        if (!text) return "REG";
-        const cleaned = text.trim();
-        if (
-          cleaned.length > 10 ||
-          /login|account|password|enter|details|ready|ended/i.test(cleaned)
-        ) {
-          return "REG";
-        }
-        return cleaned || "REG";
-      };
-
-      data.bonus = sanitizeBonus(data.bonus);
-
-      // Create drawid for uniqueness checking (draw + date combination)
-      data.drawid = `${data.draw}_${data.date}`;
-      data.location = "SA";
-
-      // Save to DB and repair malformed historical rows for same drawid
-      await retry(async () => {
-        const existing = await KenoResult.findOne({ drawid: data.drawid })
-          .select("_id numbers")
-          .lean();
-
-        let inserted = false;
-        if (!existing) {
-          await KenoResult.create(data);
-          inserted = true;
-        } else if (!hasValidKenoNumbers(existing.numbers || [])) {
-          await KenoResult.updateOne({ _id: existing._id }, { $set: data });
-          console.log("🔧 SA repaired malformed draw:", data.draw, "on", data.date);
-        }
-
-        if (inserted) {
-          console.log("✅ SA data inserted:", data.draw, "on", data.date);
-
-          // Socket Emission for new results
-          try {
-            const io = getIO();
-            io.emit("newResult", {
-              type: "KENO",
-              location: "SA",
-              draw: data.draw,
-              numbers: data.numbers,
-              heads: data.heads,
-              tails: data.tails,
-              result: data.result,
-              bonus: data.bonus,
-            });
-            console.log("📡 SA Keno: Emitted 'newResult' socket event");
-
-            // 🆕 Emit Background Event for Alert Matching & Notifications
-            eventBus.emit(EVENTS.NEW_RESULT_PUBLISHED, {
-              type: "KENO",
-              location: "SA",
-              data: data,
-            });
-          } catch (socketErr) {
-            console.warn("⚠️ SA Keno: Socket emit failed:", socketErr.message);
-          }
-        } else {
-          console.log(
-            "ℹ️  SA draw already exists for this date, skipped insert:",
-            data.draw,
-            "on",
-            data.date,
+      let liveDrawCeiling = null;
+      try {
+        const liveGame = await page.evaluate(async () => {
+          const res = await fetch(
+            "https://api-info-sa.keno.com.au/v2/games/kds?jurisdiction=SA",
           );
+          const data = await res.json();
+          if (data && data.current && data.current.draw) {
+            return {
+              draw: String(data.current["game-number"]),
+              numbers: data.current.draw,
+              result: data.current.variants?.["heads-or-tails"]?.result,
+              bonus: data.current.variants?.bonus || "REG",
+            };
+          }
+          return null;
+        });
+
+        if (liveGame && !games.find((g) => g.draw === liveGame.draw)) {
+          console.log(`📡 SA: Found live game via API: Draw ${liveGame.draw}`);
+          liveDrawCeiling = drawNumFromValue(liveGame.draw);
+          const dateInput = await page.evaluate(() =>
+            document
+              .querySelector('input[data-id="check-results-date-input"]')
+              ?.value?.trim(),
+          );
+          const currentDate =
+            dateInput ||
+            new Date().toLocaleDateString("en-AU").replace(/\//g, "-");
+          games.push({ ...liveGame, date: currentDate, rawText: "" });
         }
+      } catch (ae) {
+        console.warn("⚠️ SA live API fetch failed:", ae.message);
+      }
+      const persisted = await persistSaGames(games, {
+        currentDrawNum: liveDrawCeiling,
       });
 
       await safeClose(browser);
-      return data;
+      return (
+        persisted.latestGame ||
+        (games.length > 0 ? games[games.length - 1] : null)
+      );
     } catch (err) {
-      console.error("❌ runScraperOnce failed:", err.message);
+      console.error("❌ SA scraper failed:", err.message);
       await safeClose(browser);
       throw err;
     }
   };
 
-  return await retry(async () => {
-    await killZombieChromium();
-    return await runScraperOnce();
-  });
+  return await retry(
+    async () => {
+      await killZombieChromium();
+      return await runScraperOnce();
+    },
+    2,
+    5000,
+  );
 };
 
 // Fetch recent Keno results
 export const getKenoResultsSa = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
-    const results = await KenoResult.find({
-      numbers: { $size: 20 },
-      ...validNumbersExpr,
-    })
-      .sort({ createdAt: -1 })
-      .limit(limit);
+    const liveDrawCeiling = await getSaLiveDrawCeiling();
+
+    const pipeline = [
+      {
+        $match: {
+          numbers: { $size: 20 },
+          ...validNumbersExpr,
+        },
+      },
+      {
+        $addFields: {
+          drawNum: {
+            $convert: {
+              input: "$draw",
+              to: "int",
+              onError: -1,
+              onNull: -1,
+            },
+          },
+        },
+      },
+    ];
+
+    if (Number.isInteger(liveDrawCeiling)) {
+      pipeline.push({
+        $match: { drawNum: { $lte: liveDrawCeiling + MAX_DRAW_AHEAD } },
+      });
+    }
+
+    pipeline.push(
+      { $sort: { createdAt: -1, drawNum: -1 } },
+      { $limit: limit },
+      { $project: { drawNum: 0 } },
+    );
+
+    const results = await KenoResult.aggregate(pipeline);
 
     res.status(200).json({ success: true, results });
   } catch (err) {
@@ -522,7 +762,31 @@ export const getFilteredKenoResultsSa = async (req, res) => {
     } else {
       filter.numbers = { $size: 20 };
     }
-    filter.$expr = validNumbersExpr.$expr;
+    const shouldApplyLiveCeiling =
+      !date && !startDate && !endDate && !firstGameNumber && !lastGameNumber;
+    const liveDrawCeiling = shouldApplyLiveCeiling
+      ? await getSaLiveDrawCeiling()
+      : null;
+    const exprConditions = [validNumbersExpr.$expr];
+    if (shouldApplyLiveCeiling && Number.isInteger(liveDrawCeiling)) {
+      exprConditions.push({
+        $lte: [
+          {
+            $convert: {
+              input: "$draw",
+              to: "int",
+              onError: -1,
+              onNull: -1,
+            },
+          },
+          liveDrawCeiling + MAX_DRAW_AHEAD,
+        ],
+      });
+    }
+    filter.$expr =
+      exprConditions.length === 1
+        ? exprConditions[0]
+        : { $and: exprConditions };
 
     // Convert page and limit to numbers
     const limitNum = Number(limit);
@@ -535,10 +799,25 @@ export const getFilteredKenoResultsSa = async (req, res) => {
     // Get total count for pagination info
     const totalResults = await KenoResult.countDocuments(filter);
 
-    const results = await KenoResult.find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limitNum);
+    const results = await KenoResult.aggregate([
+      { $match: filter },
+      {
+        $addFields: {
+          drawNum: {
+            $convert: {
+              input: "$draw",
+              to: "int",
+              onError: -1,
+              onNull: -1,
+            },
+          },
+        },
+      },
+      { $sort: { drawNum: -1, createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limitNum },
+      { $project: { drawNum: 0 } },
+    ]);
 
     res.status(200).json({
       success: true,
