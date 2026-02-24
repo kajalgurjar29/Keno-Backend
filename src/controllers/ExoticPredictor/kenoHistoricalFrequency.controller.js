@@ -10,6 +10,70 @@ const allCollections = {
   VIC: VICDrawNumber,
 };
 
+const toFiniteNumber = (value) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+const parseDateToDayNumber = (value) => {
+  if (!value) return null;
+
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    return Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()) / 86400000;
+  }
+
+  const raw = String(value).trim();
+  const ymd = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (ymd) {
+    const y = Number(ymd[1]);
+    const m = Number(ymd[2]);
+    const d = Number(ymd[3]);
+    return Date.UTC(y, m - 1, d) / 86400000;
+  }
+
+  const dmy = raw.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmy) {
+    const d = Number(dmy[1]);
+    const m = Number(dmy[2]);
+    const y = Number(dmy[3]);
+    return Date.UTC(y, m - 1, d) / 86400000;
+  }
+
+  const ts = Date.parse(raw);
+  if (Number.isFinite(ts)) {
+    const dt = new Date(ts);
+    return Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()) / 86400000;
+  }
+
+  return null;
+};
+
+const compareNullableNumbers = (a, b) => {
+  if (a !== null && b !== null && a !== b) return a - b;
+  if (a !== null && b === null) return -1;
+  if (a === null && b !== null) return 1;
+  return 0;
+};
+
+const compareKenoDraws = (a, b) => {
+  const dayA = parseDateToDayNumber(a.date ?? a.createdAt);
+  const dayB = parseDateToDayNumber(b.date ?? b.createdAt);
+  const dayDiff = compareNullableNumbers(dayA, dayB);
+  if (dayDiff !== 0) return dayDiff;
+
+  const drawA = toFiniteNumber(a.draw ?? a.drawNumber);
+  const drawB = toFiniteNumber(b.draw ?? b.drawNumber);
+  const drawDiff = compareNullableNumbers(drawA, drawB);
+  if (drawDiff !== 0) return drawDiff;
+
+  const createdAtA = a.createdAt ? new Date(a.createdAt).getTime() : null;
+  const createdAtB = b.createdAt ? new Date(b.createdAt).getTime() : null;
+  const createdAtDiff = compareNullableNumbers(createdAtA, createdAtB);
+  if (createdAtDiff !== 0) return createdAtDiff;
+
+  return String(a._id || "").localeCompare(String(b._id || ""));
+};
+
 // Analyze the historical frequency for an exact combination (order-insensitive)
 // Body:
 // {
@@ -53,33 +117,14 @@ export const analyzeHistoricalFrequency = async (req, res) => {
       await Promise.all(
         modelsToScan.map((m) =>
           m
-            .find({}, { numbers: 1, drawNumber: 1, createdAt: 1, date: 1 })
-            .lean()
-        )
+            .find({}, { numbers: 1, draw: 1, drawNumber: 1, createdAt: 1, date: 1 })
+            .lean(),
+        ),
       )
     ).flat();
 
-    // Ensure combined ALL-location analytics are processed in a single stable order.
-    allDrawsArrays.sort((a, b) => {
-      const aTs = a.createdAt ? new Date(a.createdAt).getTime() : NaN;
-      const bTs = b.createdAt ? new Date(b.createdAt).getTime() : NaN;
-      const aHasTs = Number.isFinite(aTs);
-      const bHasTs = Number.isFinite(bTs);
-
-      if (aHasTs && bHasTs && aTs !== bTs) return aTs - bTs;
-      if (aHasTs && !bHasTs) return -1;
-      if (!aHasTs && bHasTs) return 1;
-
-      const aDraw = Number(a.drawNumber);
-      const bDraw = Number(b.drawNumber);
-      const aHasDraw = Number.isFinite(aDraw);
-      const bHasDraw = Number.isFinite(bDraw);
-
-      if (aHasDraw && bHasDraw && aDraw !== bDraw) return aDraw - bDraw;
-      if (aHasDraw && !bHasDraw) return -1;
-      if (!aHasDraw && bHasDraw) return 1;
-      return 0;
-    });
+    // Sort by game order (date + draw) to avoid createdAt backfill skew.
+    allDrawsArrays.sort(compareKenoDraws);
 
     if (!allDrawsArrays.length) {
       return res
@@ -105,7 +150,7 @@ export const analyzeHistoricalFrequency = async (req, res) => {
       // If all numbers are included in the draw, we count it as an occurrence
       occurrences += 1;
       lastSeenIndex = i;
-      lastDrawNumber = draw.drawNumber ?? null;
+      lastDrawNumber = draw.draw ?? draw.drawNumber ?? null;
       occurrenceIndexes.push(i);
     }
 

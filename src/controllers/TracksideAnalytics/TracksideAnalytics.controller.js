@@ -4,6 +4,70 @@ import ACT from "../../models/TrackSideResult.ACT.model.js";
 
 const MODELS = [NSW, VIC, ACT];
 
+const toFiniteNumber = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+};
+
+const parseDateToDayNumber = (value) => {
+    if (!value) return null;
+
+    if (value instanceof Date && Number.isFinite(value.getTime())) {
+        return Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()) / 86400000;
+    }
+
+    const raw = String(value).trim();
+    const ymd = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+    if (ymd) {
+        const y = Number(ymd[1]);
+        const m = Number(ymd[2]);
+        const d = Number(ymd[3]);
+        return Date.UTC(y, m - 1, d) / 86400000;
+    }
+
+    const dmy = raw.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    if (dmy) {
+        const d = Number(dmy[1]);
+        const m = Number(dmy[2]);
+        const y = Number(dmy[3]);
+        return Date.UTC(y, m - 1, d) / 86400000;
+    }
+
+    const ts = Date.parse(raw);
+    if (Number.isFinite(ts)) {
+        const dt = new Date(ts);
+        return Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()) / 86400000;
+    }
+
+    return null;
+};
+
+const compareNullableNumbers = (a, b) => {
+    if (a !== null && b !== null && a !== b) return a - b;
+    if (a !== null && b === null) return -1;
+    if (a === null && b !== null) return 1;
+    return 0;
+};
+
+const compareTracksideRaces = (a, b) => {
+    const dayA = parseDateToDayNumber(a.date ?? a.createdAt);
+    const dayB = parseDateToDayNumber(b.date ?? b.createdAt);
+    const dayDiff = compareNullableNumbers(dayA, dayB);
+    if (dayDiff !== 0) return dayDiff;
+
+    const raceNoA = toFiniteNumber(a.gameNumber ?? a.drawNumber);
+    const raceNoB = toFiniteNumber(b.gameNumber ?? b.drawNumber);
+    const raceNoDiff = compareNullableNumbers(raceNoA, raceNoB);
+    if (raceNoDiff !== 0) return raceNoDiff;
+
+    const createdAtA = a.createdAt ? new Date(a.createdAt).getTime() : null;
+    const createdAtB = b.createdAt ? new Date(b.createdAt).getTime() : null;
+    const createdAtDiff = compareNullableNumbers(createdAtA, createdAtB);
+    if (createdAtDiff !== 0) return createdAtDiff;
+
+    return String(a._id || "").localeCompare(String(b._id || ""));
+};
+
 // Helper to get sorted runners by position
 const getRunnersByPosition = (runners = []) => {
     return runners
@@ -92,24 +156,13 @@ const formatTop10 = (statsMap, totalGames, recent360StatsMap = {}, recent1000Sta
 
 export const getTop10Exotics = async (req, res) => {
     try {
-        let allRacesMap = new Map();
+        let allRaces = [];
         for (const M of MODELS) {
             const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1, dividends: 1 }).lean();
-            races.forEach(race => {
-                const raceDate = race.date || (race.createdAt ? new Date(race.createdAt).toISOString().split('T')[0] : "UNK");
-                const raceNum = (race.gameNumber !== undefined && race.gameNumber !== null && race.gameNumber !== "")
-                    ? race.gameNumber
-                    : (race.drawNumber || race.gameId || race._id.toString());
-                const key = `${raceDate}_${raceNum}`;
-
-                if (!allRacesMap.has(key) || (race.runners && race.runners.length > 0 && (!allRacesMap.get(key).runners || allRacesMap.get(key).runners.length === 0))) {
-                    allRacesMap.set(key, race);
-                }
-            });
+            allRaces = allRaces.concat(races);
         }
 
-        let allRaces = Array.from(allRacesMap.values());
-        allRaces.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        allRaces.sort(compareTracksideRaces);
         const totalGames = allRaces.length;
 
         console.log(`Analyzing ${totalGames} Trackside races for Analytics...`);
@@ -145,12 +198,12 @@ export const getTop10Exotics = async (req, res) => {
 
                 if (nums.length >= 3) {
                     const r3 = nums[2];
-                    const tCombo = [r1, r2, r3].sort((a, b) => a - b).join("-");
+                    const tCombo = `${r1}-${r2}-${r3}`;
                     processStats(targetMap.Trifecta, tCombo, index, raceDate, divs.trifecta);
 
                     if (nums.length >= 4) {
                         const r4 = nums[3];
-                        const fCombo = [r1, r2, r3, r4].sort((a, b) => a - b).join("-");
+                        const fCombo = `${r1}-${r2}-${r3}-${r4}`;
                         processStats(targetMap.FirstFour, fCombo, index, raceDate, divs.first4);
                     }
                 }
@@ -204,26 +257,21 @@ export const getTop10Exotics = async (req, res) => {
 
 export const getTop10Exotics24h = async (req, res) => {
     try {
-        let allRacesMap = new Map();
+        let allRaces = [];
         for (const M of MODELS) {
             const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1, dividends: 1 })
                 .sort({ createdAt: -1 })
                 .lean();
-            races.forEach(race => {
-                const raceDate = race.date || (race.createdAt ? new Date(race.createdAt).toISOString().split('T')[0] : "UNK");
-                const raceNum = (race.gameNumber !== undefined && race.gameNumber !== null && race.gameNumber !== "")
-                    ? race.gameNumber
-                    : (race.drawNumber || race.gameId || race._id.toString());
-                const key = `${raceDate}_${raceNum}`;
-
-                if (!allRacesMap.has(key) || (race.runners && race.runners.length > 0 && (!allRacesMap.get(key).runners || allRacesMap.get(key).runners.length === 0))) {
-                    allRacesMap.set(key, race);
-                }
-            });
+            allRaces = allRaces.concat(races);
         }
 
-        let allRaces = Array.from(allRacesMap.values());
-        allRaces.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        allRaces.sort(compareTracksideRaces);
+
+        // Keep the recent endpoint aligned to a fixed recent window.
+        if (allRaces.length > 360) {
+            allRaces = allRaces.slice(allRaces.length - 360);
+        }
+
         const totalGames = allRaces.length;
 
         const stats = { Quinella: {}, Exacta: {}, Trifecta: {}, FirstFour: {} };
@@ -257,12 +305,12 @@ export const getTop10Exotics24h = async (req, res) => {
 
                 if (nums.length >= 3) {
                     const r3 = nums[2];
-                    const tCombo = [r1, r2, r3].sort((a, b) => a - b).join("-");
+                    const tCombo = `${r1}-${r2}-${r3}`;
                     processStats(targetMap.Trifecta, tCombo, index, raceDate, divs.trifecta);
 
                     if (nums.length >= 4) {
                         const r4 = nums[3];
-                        const fCombo = [r1, r2, r3, r4].sort((a, b) => a - b).join("-");
+                        const fCombo = `${r1}-${r2}-${r3}-${r4}`;
                         processStats(targetMap.FirstFour, fCombo, index, raceDate, divs.first4);
                     }
                 }
@@ -324,26 +372,14 @@ export const getTracksideHorseEntryDetails = async (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid horse number" });
         }
 
-        let allRacesMap = new Map();
+        let allRaces = [];
         for (const M of MODELS) {
             const races = await M.find({}, { runners: 1, numbers: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, gameName: 1, gameId: 1, location: 1 }).lean();
-            races.forEach(race => {
-                const raceDate = race.date || (race.createdAt ? new Date(race.createdAt).toISOString().split('T')[0] : "UNK");
-                const raceNum = (race.gameNumber !== undefined && race.gameNumber !== null && race.gameNumber !== "")
-                    ? race.gameNumber
-                    : (race.drawNumber || race.gameId || race._id.toString());
-                const key = `${raceDate}_${raceNum}`;
-
-                if (!allRacesMap.has(key) || (race.runners && race.runners.length > 0 && (!allRacesMap.get(key).runners || allRacesMap.get(key).runners.length === 0))) {
-                    allRacesMap.set(key, race);
-                }
-            });
+            allRaces = allRaces.concat(races);
         }
 
-        let allRaces = Array.from(allRacesMap.values());
-
         // Sort by time (asc) to calculate droughts
-        allRaces.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        allRaces.sort(compareTracksideRaces);
         const totalGames = allRaces.length;
 
         let hits = [];

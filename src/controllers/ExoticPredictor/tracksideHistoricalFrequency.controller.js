@@ -8,6 +8,70 @@ const allCollections = {
     VIC: VIC,
 };
 
+const toFiniteNumber = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+};
+
+const parseDateToDayNumber = (value) => {
+    if (!value) return null;
+
+    if (value instanceof Date && Number.isFinite(value.getTime())) {
+        return Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()) / 86400000;
+    }
+
+    const raw = String(value).trim();
+    const ymd = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+    if (ymd) {
+        const y = Number(ymd[1]);
+        const m = Number(ymd[2]);
+        const d = Number(ymd[3]);
+        return Date.UTC(y, m - 1, d) / 86400000;
+    }
+
+    const dmy = raw.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    if (dmy) {
+        const d = Number(dmy[1]);
+        const m = Number(dmy[2]);
+        const y = Number(dmy[3]);
+        return Date.UTC(y, m - 1, d) / 86400000;
+    }
+
+    const ts = Date.parse(raw);
+    if (Number.isFinite(ts)) {
+        const dt = new Date(ts);
+        return Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()) / 86400000;
+    }
+
+    return null;
+};
+
+const compareNullableNumbers = (a, b) => {
+    if (a !== null && b !== null && a !== b) return a - b;
+    if (a !== null && b === null) return -1;
+    if (a === null && b !== null) return 1;
+    return 0;
+};
+
+const compareTracksideRaces = (a, b) => {
+    const dayA = parseDateToDayNumber(a.date ?? a.createdAt);
+    const dayB = parseDateToDayNumber(b.date ?? b.createdAt);
+    const dayDiff = compareNullableNumbers(dayA, dayB);
+    if (dayDiff !== 0) return dayDiff;
+
+    const raceNoA = toFiniteNumber(a.gameNumber ?? a.drawNumber);
+    const raceNoB = toFiniteNumber(b.gameNumber ?? b.drawNumber);
+    const raceNoDiff = compareNullableNumbers(raceNoA, raceNoB);
+    if (raceNoDiff !== 0) return raceNoDiff;
+
+    const createdAtA = a.createdAt ? new Date(a.createdAt).getTime() : null;
+    const createdAtB = b.createdAt ? new Date(b.createdAt).getTime() : null;
+    const createdAtDiff = compareNullableNumbers(createdAtA, createdAtB);
+    if (createdAtDiff !== 0) return createdAtDiff;
+
+    return String(a._id || "").localeCompare(String(b._id || ""));
+};
+
 const getRunnersByPosition = (runners = []) => {
     return runners
         .filter((r) => r.horseNo && r.horseNo !== 0)
@@ -35,39 +99,16 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
         }
 
         // Fetch races
-        let allRacesMap = new Map();
+        let allRaces = [];
         const modelsToFetch = location === "ALL" ? [NSW, VIC, ACT] : (allCollections[location] ? [allCollections[location]] : [NSW]);
 
         for (const M of modelsToFetch) {
             // No limit - get full history for dynamic analysis
             const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, gameId: 1, gameName: 1, dividends: 1, location: 1 }).lean();
-            races.forEach(race => {
-                // Normalize date string to ensure cross-state merging
-                let raceDate = "UNK";
-                if (race.date && race.date.length >= 8) {
-                    if (race.date.includes("/")) {
-                        const parts = race.date.split("/");
-                        if (parts[0].length === 4) raceDate = race.date.substring(0, 10).replace(/\//g, "-");
-                        else raceDate = `${parts[parts.length - 1]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-                    } else {
-                        raceDate = race.date.substring(0, 10);
-                    }
-                } else if (race.createdAt) {
-                    raceDate = new Date(race.createdAt).toISOString().split('T')[0];
-                }
-
-                // Unified ID: prioritizing gameNumber/drawNumber which is consistent across states
-                const raceNum = race.gameNumber || race.drawNumber || race.gameId || race._id.toString();
-                const key = `${raceDate}_${raceNum}`.trim().toLowerCase();
-
-                if (!allRacesMap.has(key) || (race.runners && race.runners.length > 0 && (!allRacesMap.get(key).runners || allRacesMap.get(key).runners.length === 0))) {
-                    allRacesMap.set(key, race);
-                }
-            });
+            allRaces = allRaces.concat(races);
         }
 
-        let allRaces = Array.from(allRacesMap.values());
-        allRaces.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        allRaces.sort(compareTracksideRaces);
 
         // Dynamic Filtering: Support for "Recent" view
         if (recentCount && !isNaN(parseInt(recentCount))) {
