@@ -1,5 +1,51 @@
 import NSWTrackSideResult from "../../models/TrackSideResult.NSW.model.js";
-import KenoResult from "../../models/KenoResult.model.js";
+import NSWKenoResult from "../../models/NSWkenoDrawResult.model.js";
+import VICKenoResult from "../../models/VICkenoDrawResult.model.js";
+import ACTKenoResult from "../../models/ACTkenoDrawResult.model.js";
+import SAKenoResult from "../../models/SAkenoDrawResult.model.js";
+
+const kenoModels = {
+  NSW: NSWKenoResult,
+  VIC: VICKenoResult,
+  ACT: ACTKenoResult,
+  SA: SAKenoResult,
+};
+
+const validNumbersFilter = {
+  numbers: { $size: 20 },
+  $expr: {
+    $eq: [
+      { $size: "$numbers" },
+      { $size: { $setUnion: ["$numbers", []] } },
+    ],
+  },
+};
+
+const normalizeLocation = (location) => {
+  const value = String(location || "").toUpperCase();
+  return kenoModels[value] ? value : null;
+};
+
+const getLatestKenoRecord = async (location) => {
+  const normalized = normalizeLocation(location);
+
+  if (normalized) {
+    return kenoModels[normalized]
+      .findOne(validNumbersFilter)
+      .sort({ createdAt: -1 })
+      .lean();
+  }
+
+  const latestByState = await Promise.all(
+    Object.values(kenoModels).map((Model) =>
+      Model.findOne(validNumbersFilter).sort({ createdAt: -1 }).lean()
+    )
+  );
+
+  return latestByState
+    .filter(Boolean)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
+};
 
 export const getLatestTrackSideResult = async (req, res) => {
   try {
@@ -114,9 +160,7 @@ export const getLatestResults = async (req, res) => {
     }
 
     /* ================= KENO ================= */
-    const keno = await KenoResult.findOne()
-      .sort({ createdAt: -1 })
-      .lean();
+    const keno = await getLatestKenoRecord(req.query.location);
 
     const kenoData = keno
       ? {
@@ -124,6 +168,10 @@ export const getLatestResults = async (req, res) => {
           date: keno.date,
           numbers: keno.numbers,
           location: keno.location,
+          heads: keno.heads,
+          tails: keno.tails,
+          result: keno.result,
+          bonus: keno.bonus || "REG",
         }
       : null;
 

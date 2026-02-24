@@ -20,6 +20,30 @@ const sortNumbers = (numbers) => {
   return [...numbers].sort((a, b) => a - b);
 };
 
+const normalizeKenoNumbers = (numbers = []) => {
+  const unique = [...new Set(
+    numbers
+      .map((n) => Number(n))
+      .filter((n) => Number.isInteger(n) && n >= 1 && n <= 80)
+  )];
+  return sortNumbers(unique);
+};
+
+const hasValidKenoNumbers = (numbers = []) => (
+  Array.isArray(numbers) &&
+  numbers.length === 20 &&
+  new Set(numbers).size === 20
+);
+
+const validNumbersExpr = {
+  $expr: {
+    $eq: [
+      { $size: "$numbers" },
+      { $size: { $setUnion: ["$numbers", []] } },
+    ],
+  },
+};
+
 const retry = async (fn, retries = 3, delay = 2000) => {
   let lastError;
   for (let i = 0; i < retries; i++) {
@@ -169,11 +193,13 @@ export const scrapeACTKenoByGame = async () => {
 
       const resultsList = [];
       for (const game of games) {
-        if (game.numbers.length < 20) {
+        game.numbers = normalizeKenoNumbers(game.numbers);
+
+        if (!hasValidKenoNumbers(game.numbers)) {
           console.warn(`⚠️ skipping draw ${game.draw} - incomplete numbers (${game.numbers.length})`);
           continue;
         }
-        game.numbers = sortNumbers(game.numbers).slice(0, 20);
+
         const headsCount = game.numbers.filter(n => n >= 1 && n <= 40).length;
         const tailsCount = game.numbers.filter(n => n >= 41 && n <= 80).length;
         game.heads = headsCount;
@@ -197,8 +223,20 @@ export const scrapeACTKenoByGame = async () => {
         game.location = "ACT";
 
         try {
-          const res = await KenoResult.updateOne({ drawid: game.drawid }, { $setOnInsert: game }, { upsert: true });
-          if (res.upsertedCount > 0) {
+          const existing = await KenoResult.findOne({ drawid: game.drawid })
+            .select("_id numbers")
+            .lean();
+
+          let inserted = false;
+          if (!existing) {
+            await KenoResult.create(game);
+            inserted = true;
+          } else if (!hasValidKenoNumbers(existing.numbers || [])) {
+            await KenoResult.updateOne({ _id: existing._id }, { $set: game });
+            console.log(`🔧 ACT repaired malformed draw ${game.draw}`);
+          }
+
+          if (inserted) {
             console.log(`✅ ACT Inserted: Draw ${game.draw}`);
             resultsList.push(game);
             try {
@@ -227,14 +265,17 @@ export const scrapeACTKenoByGame = async () => {
 export const scrapeATCKeno = scrapeACTKenoByGame;
 export const getKenoResultsAtc = async (req, res) => {
   try {
-    const results = await KenoResult.find({ numbers: { $size: 20 } }).sort({ createdAt: -1 }).limit(parseInt(req.query.limit) || 10);
+    const results = await KenoResult.find({
+      numbers: { $size: 20 },
+      ...validNumbersExpr,
+    }).sort({ createdAt: -1 }).limit(parseInt(req.query.limit) || 10);
     res.status(200).json({ success: true, results });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 export const getFilteredKenoResultsAtc = async (req, res) => {
   try {
     const { firstGameNumber, lastGameNumber, date, limit = 50, page = 1 } = req.query;
-    const filter = { numbers: { $size: 20 } };
+    const filter = { numbers: { $size: 20 }, ...validNumbersExpr };
     if (firstGameNumber && lastGameNumber) filter.draw = { $gte: String(firstGameNumber), $lte: String(lastGameNumber) };
     if (date) {
       const start = new Date(date + "T00:00:00.000Z");
