@@ -176,9 +176,13 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
             const combos = getCombos(comboType);
             const avgDiv = divCount > 0 ? (totalDivValue / divCount) : 0;
 
+            const winProbability = totalGames > 0
+                ? ((count / totalGames) * 100).toFixed(2) + "%"
+                : "0.00%";
+
             results[type] = {
                 hits: count,
-                winProbability: ((count / totalGames) * 100).toFixed(2) + "%",
+                winProbability,
                 avgGms: avgGms,
                 hitsLast360: hits.filter(i => i >= totalGames - 360).length,
                 hitsLast1000: hits.filter(i => i >= totalGames - 1000).length,
@@ -187,7 +191,7 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
                 combos,
                 flexiPercent: combos > 0 ? ((1 / combos) * 100).toFixed(2) + "%" : "0.00%",
                 avgDiv: "$" + avgDiv.toFixed(2),
-                potentialROI: avgDiv > 0 ? ((avgDiv / combos).toFixed(2) + "x") : "N/A",
+                potentialROI: avgDiv > 0 && combos > 0 ? ((avgDiv / combos).toFixed(2) + "x") : "N/A",
                 stateBreakdown,
                 last5Hits: hits.slice(-5).reverse().map(idx => {
                     const race = processed[idx];

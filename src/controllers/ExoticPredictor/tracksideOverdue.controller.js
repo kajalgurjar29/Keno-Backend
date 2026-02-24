@@ -62,7 +62,7 @@ const calculateStats = async (location, size, maxDraws) => {
 
     const results = Array.from(comboStats.entries()).map(([comboKey, stat]) => {
         const avgEvery = drawsCount / stat.count;
-        const overdue = drawsCount - stat.lastSeen;
+        const overdue = Math.max(0, drawsCount - stat.lastSeen - 1);
         const comboArr = comboKey.split("-").map(Number);
 
         // Create a 10-digit numeric ID

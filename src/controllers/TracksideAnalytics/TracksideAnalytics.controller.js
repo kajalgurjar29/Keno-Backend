@@ -25,12 +25,9 @@ const processStats = (acc, combo, gameIndex, date, dividendStr = null) => {
     }
     const entry = acc[combo];
 
-    // Calculate gap
-    let gap;
-    if (entry.lastIndex === -1) {
-        gap = 0; // No gap yet
-    } else {
-        gap = gameIndex - entry.lastIndex;
+    // Gap = missed races between two hits
+    if (entry.lastIndex !== -1) {
+        const gap = Math.max(0, gameIndex - entry.lastIndex - 1);
         entry.gaps.push(gap);
     }
 
@@ -55,6 +52,9 @@ const formatTop10 = (statsMap, totalGames, recent360StatsMap = {}, recent1000Sta
             const wins = data.count;
             const avgGames = wins > 0 ? Number((totalGames / wins).toFixed(2)) : totalGames;
             const currentDrought = totalGames - 1 - data.lastIndex;
+            const avgDrought = data.gaps.length > 0
+                ? Number((data.gaps.reduce((sum, gap) => sum + gap, 0) / data.gaps.length).toFixed(2))
+                : (wins > 0 ? Math.max(0, currentDrought) : totalGames);
             const maxHistoricalGap = data.gaps.length > 0 ? Math.max(...data.gaps) : 0;
             const longestDrought = Math.max(maxHistoricalGap, currentDrought);
 
@@ -80,7 +80,7 @@ const formatTop10 = (statsMap, totalGames, recent360StatsMap = {}, recent1000Sta
                 hits360: wins360,
                 avg360: avg360,
                 currentDrought: Math.max(0, currentDrought),
-                avgDrought: avgGames,
+                avgDrought: avgDrought,
                 longestDrought: longestDrought,
                 winPercentage: ((wins / totalGames) * 100).toFixed(2),
                 lastAppeared: Math.max(0, currentDrought),
@@ -392,7 +392,7 @@ export const getTracksideHorseEntryDetails = async (req, res) => {
         // Average Drought: average gap between hits
         const avgDrought = gaps.length > 0
             ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length)
-            : (hits.length > 0 ? Math.round(totalGames / hits.length) : totalGames);
+            : (hits.length > 0 ? currentDrought : totalGames);
 
         // Get last 5 hits in reverse order (newest first)
         const last5Hits = hits.slice(-5).reverse();

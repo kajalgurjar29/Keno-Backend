@@ -48,9 +48,12 @@ export const getAutomationRate = async (req, res) => {
     const total = await Ticket.countDocuments(filter);
     const bot = await Ticket.countDocuments({ ...filter, isBot: true });
 
+    const botPct = total > 0 ? Math.round((bot / total) * 100) : 0;
+    const humanPct = total > 0 ? Math.round(((total - bot) / total) * 100) : 0;
+
     res.json({
-      bot: Math.round((bot / total) * 100),
-      human: Math.round(((total - bot) / total) * 100),
+      bot: botPct,
+      human: humanPct,
       totalQueries: total,
     });
   } catch {
@@ -69,9 +72,13 @@ export const getEscalationRate = async (req, res) => {
       isEscalated: true,
     });
 
+    const escalatedPct = total > 0 ? Math.round((escalated / total) * 100) : 0;
+    const nonEscalatedPct =
+      total > 0 ? Math.round(((total - escalated) / total) * 100) : 0;
+
     res.json({
-      escalated: Math.round((escalated / total) * 100),
-      nonEscalated: Math.round(((total - escalated) / total) * 100),
+      escalated: escalatedPct,
+      nonEscalated: nonEscalatedPct,
       totalQueries: total,
     });
   } catch {

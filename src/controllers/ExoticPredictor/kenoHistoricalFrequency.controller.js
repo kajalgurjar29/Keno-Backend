@@ -51,9 +51,35 @@ export const analyzeHistoricalFrequency = async (req, res) => {
 
     const allDrawsArrays = (
       await Promise.all(
-        modelsToScan.map((m) => m.find().sort({ drawNumber: 1 }).lean())
+        modelsToScan.map((m) =>
+          m
+            .find({}, { numbers: 1, drawNumber: 1, createdAt: 1, date: 1 })
+            .lean()
+        )
       )
     ).flat();
+
+    // Ensure combined ALL-location analytics are processed in a single stable order.
+    allDrawsArrays.sort((a, b) => {
+      const aTs = a.createdAt ? new Date(a.createdAt).getTime() : NaN;
+      const bTs = b.createdAt ? new Date(b.createdAt).getTime() : NaN;
+      const aHasTs = Number.isFinite(aTs);
+      const bHasTs = Number.isFinite(bTs);
+
+      if (aHasTs && bHasTs && aTs !== bTs) return aTs - bTs;
+      if (aHasTs && !bHasTs) return -1;
+      if (!aHasTs && bHasTs) return 1;
+
+      const aDraw = Number(a.drawNumber);
+      const bDraw = Number(b.drawNumber);
+      const aHasDraw = Number.isFinite(aDraw);
+      const bHasDraw = Number.isFinite(bDraw);
+
+      if (aHasDraw && bHasDraw && aDraw !== bDraw) return aDraw - bDraw;
+      if (aHasDraw && !bHasDraw) return -1;
+      if (!aHasDraw && bHasDraw) return 1;
+      return 0;
+    });
 
     if (!allDrawsArrays.length) {
       return res
@@ -85,14 +111,17 @@ export const analyzeHistoricalFrequency = async (req, res) => {
 
     const totalDraws = allDrawsArrays.length;
     const lastOccurrenceRacesAgo =
-      lastSeenIndex === -1 ? totalDraws : totalDraws - lastSeenIndex;
+      lastSeenIndex === -1
+        ? totalDraws
+        : Math.max(0, totalDraws - 1 - lastSeenIndex);
 
     // Average interval between occurrences (drought)
     let averageInterval = 0;
     if (occurrenceIndexes.length > 1) {
       let sum = 0;
       for (let i = 1; i < occurrenceIndexes.length; i++) {
-        sum += occurrenceIndexes[i] - occurrenceIndexes[i - 1];
+        // Drought is missed draws between two hits.
+        sum += Math.max(0, occurrenceIndexes[i] - occurrenceIndexes[i - 1] - 1);
       }
       averageInterval = Math.round(sum / (occurrenceIndexes.length - 1));
     }

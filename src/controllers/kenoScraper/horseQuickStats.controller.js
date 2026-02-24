@@ -226,6 +226,16 @@ export const getTracksideGraphStats = async (req, res) => {
       .map(([date, races]) => ({ date, races }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
+    const totalPositions = totalRaces * 4;
+    const activeHorses = horseStats.filter((h) => h.entries > 0);
+    const avgWinRate =
+      activeHorses.length > 0
+        ? (
+            activeHorses.reduce((sum, h) => sum + (h.wins / h.entries) * 100, 0) /
+            activeHorses.length
+          ).toFixed(1)
+        : "0.0";
+
     // Graph-ready response
     res.json({
       success: true,
@@ -255,7 +265,9 @@ export const getTracksideGraphStats = async (req, res) => {
             } Place`,
             value: count,
             percentage:
-              totalRaces > 0 ? ((count / totalRaces) * 100).toFixed(1) : "0",
+              totalPositions > 0
+                ? ((count / totalPositions) * 100).toFixed(1)
+                : "0",
           })),
         },
 
@@ -295,11 +307,7 @@ export const getTracksideGraphStats = async (req, res) => {
           },
           {
             title: "Avg Win Rate",
-            value: `${(
-              horseStats.reduce((sum, h) => {
-                return sum + (h.entries > 0 ? (h.wins / h.entries) * 100 : 0);
-              }, 0) / horseStats.length
-            ).toFixed(1)}%`,
+            value: `${avgWinRate}%`,
             icon: "trophy",
             color: "gold",
           },

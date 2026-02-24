@@ -39,10 +39,10 @@ const formatTop10 = (statsMap, totalGames, sortBy = "hot") => {
     const results = Object.entries(statsMap)
         .map(([num, data]) => {
             const wins = data.count;
-            // Average skipped games between wins
-            // Drought = (Total - Wins) / Wins
-            const avgDrought = wins > 0 ? Number(((totalGames - wins) / wins).toFixed(1)) : totalGames;
             const currentDrought = data.lastIndex === -1 ? totalGames : Math.max(0, totalGames - 1 - data.lastIndex);
+            const avgDrought = data.gaps.length > 0
+                ? Number((data.gaps.reduce((sum, gap) => sum + gap, 0) / data.gaps.length).toFixed(1))
+                : (wins > 0 ? currentDrought : totalGames);
             const maxHistoricalGap = data.gaps.length > 0 ? Math.max(...data.gaps) : 0;
             const longestDrought = Math.max(maxHistoricalGap, currentDrought);
 
