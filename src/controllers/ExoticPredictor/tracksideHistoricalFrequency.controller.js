@@ -99,16 +99,28 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
         }
 
         // Fetch races
-        let allRaces = [];
+        let allRacesRaw = [];
         const modelsToFetch = location === "ALL" ? [NSW, VIC, ACT] : (allCollections[location] ? [allCollections[location]] : [NSW]);
 
         for (const M of modelsToFetch) {
             // No limit - get full history for dynamic analysis
             const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, gameId: 1, gameName: 1, dividends: 1, location: 1 }).lean();
-            allRaces = allRaces.concat(races);
+            allRacesRaw = allRacesRaw.concat(races);
         }
 
-        allRaces.sort(compareTracksideRaces);
+        // De-duplicate by gameId
+        const uniqueRacesMap = new Map();
+        allRacesRaw.forEach(r => {
+            const id = r.gameId || `${r.gameNumber}_${r.date}`;
+            if (!uniqueRacesMap.has(id)) {
+                uniqueRacesMap.set(id, r);
+            } else {
+                const existing = uniqueRacesMap.get(id);
+                if (!existing.dividends && r.dividends) existing.dividends = r.dividends;
+            }
+        });
+
+        const allRaces = Array.from(uniqueRacesMap.values()).sort(compareTracksideRaces);
 
         // Dynamic Filtering: Support for "Recent" view
         if (recentCount && !isNaN(parseInt(recentCount))) {

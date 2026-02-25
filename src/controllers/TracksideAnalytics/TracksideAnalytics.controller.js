@@ -114,21 +114,21 @@ const formatTop10 = (statsMap, totalGames, recent360StatsMap = {}, recent1000Sta
     return Object.entries(statsMap)
         .map(([combo, data]) => {
             const wins = data.count;
-            const avgGames = wins > 0 ? Number((totalGames / wins).toFixed(2)) : totalGames;
+            const avgGames = wins > 0 ? Number((totalGames / wins).toFixed(1)) : totalGames;
             const currentDrought = totalGames - 1 - data.lastIndex;
             const avgDrought = data.gaps.length > 0
-                ? Number((data.gaps.reduce((sum, gap) => sum + gap, 0) / data.gaps.length).toFixed(2))
+                ? Number((data.gaps.reduce((sum, gap) => sum + gap, 0) / data.gaps.length).toFixed(1))
                 : (wins > 0 ? Math.max(0, currentDrought) : totalGames);
             const maxHistoricalGap = data.gaps.length > 0 ? Math.max(...data.gaps) : 0;
             const longestDrought = Math.max(maxHistoricalGap, currentDrought);
 
             const recentData360 = recent360StatsMap[combo] || { count: 0 };
             const wins360 = recentData360.count;
-            const avg360 = wins360 > 0 ? Number((recentGamesCount360 / wins360).toFixed(2)) : recentGamesCount360;
+            const avg360 = wins360 > 0 ? Number((recentGamesCount360 / wins360).toFixed(1)) : recentGamesCount360;
 
             const recentData1000 = recent1000StatsMap[combo] || { count: 0 };
             const wins1000 = recentData1000.count;
-            const avg1000 = wins1000 > 0 ? Number((recentGamesCount1000 / wins1000).toFixed(2)) : recentGamesCount1000;
+            const avg1000 = wins1000 > 0 ? Number((recentGamesCount1000 / wins1000).toFixed(1)) : recentGamesCount1000;
 
             const avgDiv = data.divCount > 0 ? (data.divSum / data.divCount).toFixed(2) : "0.00";
             const recentAvgDiv360 = recentData360.divCount > 0 ? (recentData360.divSum / recentData360.divCount).toFixed(2) : "0.00";
@@ -156,13 +156,24 @@ const formatTop10 = (statsMap, totalGames, recent360StatsMap = {}, recent1000Sta
 
 export const getTop10Exotics = async (req, res) => {
     try {
-        let allRaces = [];
+        let allRacesRaw = [];
         for (const M of MODELS) {
             const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1, dividends: 1 }).lean();
-            allRaces = allRaces.concat(races);
+            allRacesRaw = allRacesRaw.concat(races);
         }
 
-        allRaces.sort(compareTracksideRaces);
+        const uniqueRacesMap = new Map();
+        allRacesRaw.forEach(r => {
+            const id = r.gameId || `${r.gameNumber}_${r.date}`;
+            if (!uniqueRacesMap.has(id)) {
+                uniqueRacesMap.set(id, r);
+            } else {
+                const existing = uniqueRacesMap.get(id);
+                if (!existing.dividends && r.dividends) existing.dividends = r.dividends;
+            }
+        });
+
+        const allRaces = Array.from(uniqueRacesMap.values()).sort(compareTracksideRaces);
         const totalGames = allRaces.length;
 
         console.log(`Analyzing ${totalGames} Trackside races for Analytics...`);
@@ -257,17 +268,29 @@ export const getTop10Exotics = async (req, res) => {
 
 export const getTop10Exotics24h = async (req, res) => {
     try {
-        let allRaces = [];
+        let allRacesRaw = [];
         for (const M of MODELS) {
             const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1, dividends: 1 })
                 .sort({ createdAt: -1 })
                 .lean();
-            allRaces = allRaces.concat(races);
+            allRacesRaw = allRacesRaw.concat(races);
         }
 
+        const uniqueRacesMap = new Map();
+        allRacesRaw.forEach(r => {
+            const id = r.gameId || `${r.gameNumber}_${r.date}`;
+            if (!uniqueRacesMap.has(id)) {
+                uniqueRacesMap.set(id, r);
+            } else {
+                const existing = uniqueRacesMap.get(id);
+                if (!existing.dividends && r.dividends) existing.dividends = r.dividends;
+            }
+        });
+
+        let allRaces = Array.from(uniqueRacesMap.values());
         allRaces.sort(compareTracksideRaces);
 
-        // Keep the recent endpoint aligned to a fixed recent window.
+        // Keep the recent endpoint aligned to a fixed recent window of unique races.
         if (allRaces.length > 360) {
             allRaces = allRaces.slice(allRaces.length - 360);
         }
