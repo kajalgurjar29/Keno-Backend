@@ -13,10 +13,21 @@ const DRAW_INTERVAL_MINUTES = 5;
 /* ================= KENO UPCOMING DRAW ================= */
 export const getUpcomingKenoDraw = async (req, res) => {
   try {
-    const MODELS = [NSWKeno, VICKeno, ACTKeno, SAKeno];
+    const { location = "NSW" } = req.query;
+    const KENO_MODELS = {
+      NSW: NSWKeno,
+      VIC: VICKeno,
+      ACT: ACTKeno,
+      SA: SAKeno
+    };
+
+    let modelsToUse = [NSWKeno, VICKeno, ACTKeno, SAKeno];
+    if (location !== "ALL" && KENO_MODELS[location.toUpperCase()]) {
+      modelsToUse = [KENO_MODELS[location.toUpperCase()]];
+    }
 
     const latestDraws = await Promise.all(
-      MODELS.map((model) =>
+      modelsToUse.map((model) =>
         model
           .findOne()
           .sort({ createdAt: -1 })
@@ -32,7 +43,7 @@ export const getUpcomingKenoDraw = async (req, res) => {
     if (!validDraws.length) {
       return res.status(404).json({
         success: false,
-        message: "No keno draw data found",
+        message: `No keno draw data found for ${location}`,
       });
     }
 
@@ -54,6 +65,7 @@ export const getUpcomingKenoDraw = async (req, res) => {
     return res.status(200).json({
       success: true,
       game: "KENO",
+      location: location.toUpperCase(),
       lastDraw: lastDrawTime,
       upcomingDraw: upcomingDrawTime,
       countdownSeconds,
@@ -71,15 +83,20 @@ export const getUpcomingKenoDraw = async (req, res) => {
 /* ================= TRACKSIDE UPCOMING DRAW ================= */
 export const getUpcomingTracksideDraw = async (req, res) => {
   try {
-    const MODELS = [
-      NSWTrackside,
-      VICTrackside,
-      ACTTrackside,
-      
-    ];
+    const { location = "NSW" } = req.query;
+    const TS_MODELS = {
+      NSW: NSWTrackside,
+      VIC: VICTrackside,
+      ACT: ACTTrackside
+    };
+
+    let modelsToUse = [NSWTrackside, VICTrackside, ACTTrackside];
+    if (location !== "ALL" && TS_MODELS[location.toUpperCase()]) {
+      modelsToUse = [TS_MODELS[location.toUpperCase()]];
+    }
 
     const latestDraws = await Promise.all(
-      MODELS.map((model) =>
+      modelsToUse.map((model) =>
         model
           .findOne()
           .sort({ createdAt: -1 })
@@ -95,7 +112,7 @@ export const getUpcomingTracksideDraw = async (req, res) => {
     if (!validDraws.length) {
       return res.status(404).json({
         success: false,
-        message: "No trackside draw data found",
+        message: `No trackside draw data found for ${location}`,
       });
     }
 
@@ -117,6 +134,7 @@ export const getUpcomingTracksideDraw = async (req, res) => {
     return res.status(200).json({
       success: true,
       game: "TRACKSIDE",
+      location: location.toUpperCase(),
       lastDraw: lastDrawTime,
       upcomingDraw: upcomingDrawTime,
       countdownSeconds,

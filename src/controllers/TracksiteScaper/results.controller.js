@@ -165,10 +165,10 @@ export const getLatestTrackSideResult = async (req, res) => {
     const trifecta =
       sortedRunners.length >= 3
         ? [
-            sortedRunners[0].horseNo,
-            sortedRunners[1].horseNo,
-            sortedRunners[2].horseNo,
-          ]
+          sortedRunners[0].horseNo,
+          sortedRunners[1].horseNo,
+          sortedRunners[2].horseNo,
+        ]
         : [];
 
     res.status(200).json({
@@ -236,10 +236,10 @@ export const getLatestResults = async (req, res) => {
           trifecta:
             sortedRunners.length >= 3
               ? [
-                  sortedRunners[0].horseNo,
-                  sortedRunners[1].horseNo,
-                  sortedRunners[2].horseNo,
-                ]
+                sortedRunners[0].horseNo,
+                sortedRunners[1].horseNo,
+                sortedRunners[2].horseNo,
+              ]
               : [],
         },
 
@@ -256,16 +256,16 @@ export const getLatestResults = async (req, res) => {
 
     const kenoData = keno
       ? {
-          draw: keno.draw,
-          date: keno.date,
-          numbers: keno.numbers,
-          location: requestedLocation,
-          upstreamJurisdiction: sourceLocation,
-          heads: keno.heads,
-          tails: keno.tails,
-          result: keno.result,
-          bonus: keno.bonus || "REG",
-        }
+        draw: keno.draw,
+        date: keno.date,
+        numbers: keno.numbers,
+        location: requestedLocation,
+        upstreamJurisdiction: sourceLocation,
+        heads: keno.heads,
+        tails: keno.tails,
+        result: keno.result,
+        bonus: keno.bonus || "REG",
+      }
       : null;
 
     /* ================= RESPONSE ================= */

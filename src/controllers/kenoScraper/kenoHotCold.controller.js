@@ -1,17 +1,30 @@
-import KenoResult from "../../models/NSWkenoDrawResult.model.js";
+import NSWKeno from "../../models/NSWkenoDrawResult.model.js";
+import VICKeno from "../../models/VICkenoDrawResult.model.js";
+import ACTKeno from "../../models/ACTkenoDrawResult.model.js";
+import SAKeno from "../../models/SAkenoDrawResult.model.js";
+
+const getModel = (location) => {
+  switch (location?.toUpperCase()) {
+    case "VIC": return VICKeno;
+    case "ACT": return ACTKeno;
+    case "SA": return SAKeno;
+    default: return NSWKeno;
+  }
+};
 
 export const getHotColdNumbers = async (req, res) => {
   try {
+    const { location = "NSW" } = req.query;
     const lookback = parseInt(req.query.lookback) || 50;
-    // last 50 draws se calculate
+    const Model = getModel(location);
 
     // 🔹 Recent draws
-    const draws = await KenoResult.find({ numbers: { $size: 20 } })
+    const draws = await Model.find({ numbers: { $size: 20 } })
       .sort({ createdAt: -1 })
       .limit(lookback);
 
     if (!draws.length) {
-      return res.status(404).json({ message: "No keno data found" });
+      return res.status(404).json({ message: `No keno data found for ${location}` });
     }
 
     // 🔹 Frequency map
@@ -32,14 +45,16 @@ export const getHotColdNumbers = async (req, res) => {
     const latest = draws[0];
 
     res.status(200).json({
+      success: true,
+      location: location.toUpperCase(),
       draw: `#${latest.draw}`,
-      time: latest.date,
+      time: latest.date || latest.createdAt,
       hotNumbers,
       coldNumbers,
       numbers: latest.numbers,
     });
   } catch (err) {
     console.error("❌ Hot/Cold API error:", err.message);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };

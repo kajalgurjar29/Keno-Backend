@@ -156,8 +156,18 @@ const formatTop10 = (statsMap, totalGames, recent360StatsMap = {}, recent1000Sta
 
 export const getTop10Exotics = async (req, res) => {
     try {
+        const { location = "ALL" } = req.query;
+        let modelsToUse = MODELS;
+
+        if (location !== "ALL") {
+            const locMap = { "NSW": NSW, "VIC": VIC, "ACT": ACT };
+            if (locMap[location.toUpperCase()]) {
+                modelsToUse = [locMap[location.toUpperCase()]];
+            }
+        }
+
         let allRacesRaw = [];
-        for (const M of MODELS) {
+        for (const M of modelsToUse) {
             const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1, dividends: 1 }).lean();
             allRacesRaw = allRacesRaw.concat(races);
         }
@@ -268,8 +278,18 @@ export const getTop10Exotics = async (req, res) => {
 
 export const getTop10Exotics24h = async (req, res) => {
     try {
+        const { location = "ALL" } = req.query;
+        let modelsToUse = MODELS;
+
+        if (location !== "ALL") {
+            const locMap = { "NSW": NSW, "VIC": VIC, "ACT": ACT };
+            if (locMap[location.toUpperCase()]) {
+                modelsToUse = [locMap[location.toUpperCase()]];
+            }
+        }
+
         let allRacesRaw = [];
-        for (const M of MODELS) {
+        for (const M of modelsToUse) {
             const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1, dividends: 1 })
                 .sort({ createdAt: -1 })
                 .lean();
@@ -389,14 +409,23 @@ export const getTop10Exotics24h = async (req, res) => {
 export const getTracksideHorseEntryDetails = async (req, res) => {
     try {
         const { horseNo } = req.params;
+        const { location = "ALL" } = req.query;
         const horseId = parseInt(horseNo);
 
         if (isNaN(horseId) || horseId < 1 || horseId > 12) {
             return res.status(400).json({ success: false, message: "Invalid horse number" });
         }
 
+        let modelsToUse = MODELS;
+        if (location !== "ALL") {
+            const locMap = { "NSW": NSW, "VIC": VIC, "ACT": ACT };
+            if (locMap[location.toUpperCase()]) {
+                modelsToUse = [locMap[location.toUpperCase()]];
+            }
+        }
+
         let allRaces = [];
-        for (const M of MODELS) {
+        for (const M of modelsToUse) {
             const races = await M.find({}, { runners: 1, numbers: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, gameName: 1, gameId: 1, location: 1 }).lean();
             allRaces = allRaces.concat(races);
         }

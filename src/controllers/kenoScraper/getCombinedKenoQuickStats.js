@@ -7,6 +7,16 @@ const MODELS = [NSW, VIC, ACT, SA];
 
 export const getCombinedKenoQuickStats = async (req, res) => {
   try {
+    const { location = "ALL" } = req.query;
+    let modelsToUse = MODELS;
+
+    if (location !== "ALL") {
+      const locMap = { "NSW": NSW, "VIC": VIC, "ACT": ACT, "SA": SA };
+      if (locMap[location.toUpperCase()]) {
+        modelsToUse = [locMap[location.toUpperCase()]];
+      }
+    }
+
     const pipeline = [
       { $match: { numbers: { $size: 20 } } },
       {
@@ -15,10 +25,7 @@ export const getCombinedKenoQuickStats = async (req, res) => {
           numbers: 1,
         },
       },
-
-      // Each number in the draw
       { $unwind: "$numbers" },
-
       {
         $group: {
           _id: "$numbers",
@@ -26,7 +33,6 @@ export const getCombinedKenoQuickStats = async (req, res) => {
           lastSeen: { $max: "$createdAt" },
         },
       },
-
       {
         $project: {
           _id: 0,
@@ -35,18 +41,14 @@ export const getCombinedKenoQuickStats = async (req, res) => {
           lastSeen: 1,
         },
       },
-
       { $sort: { number: 1 } },
     ];
 
-    // Run aggregation on all state collections
     const results = await Promise.all(
-      MODELS.map((model) => model.aggregate(pipeline))
+      modelsToUse.map((model) => model.aggregate(pipeline))
     );
 
-    // Merge stats across states
     const statsMap = new Map();
-
     results.flat().forEach((item) => {
       if (!statsMap.has(item.number)) {
         statsMap.set(item.number, item);
@@ -61,13 +63,11 @@ export const getCombinedKenoQuickStats = async (req, res) => {
       }
     });
 
-    // Total draws (for percentage) - Only count valid draws with 20 numbers
     const totalDrawsPerState = await Promise.all(
-      MODELS.map((model) => model.countDocuments({ numbers: { $size: 20 } }))
+      modelsToUse.map((model) => model.countDocuments({ numbers: { $size: 20 } }))
     );
     const totalDraws = totalDrawsPerState.reduce((a, b) => a + b, 0);
 
-    // Sort by lastSeen ascending (oldest first = longest drought)
     const sortedByDrought = Array.from(statsMap.values()).sort((a, b) => {
       if (!a.lastSeen && !b.lastSeen) return 0;
       if (!a.lastSeen) return -1;
@@ -75,15 +75,13 @@ export const getCombinedKenoQuickStats = async (req, res) => {
       return new Date(a.lastSeen) - new Date(b.lastSeen);
     }).slice(0, 10);
 
-    // Final response - Process only the top 10 longest droughts
     const finalStats = await Promise.all(sortedByDrought.map(async (item) => {
       const formattedDate = item.lastSeen ? new Date(item.lastSeen).toLocaleDateString('en-AU') : "-";
       const winPercent = totalDraws ? parseFloat(((item.entries / totalDraws) * 100).toFixed(2)) : 0;
 
-      // Calculate exact drought (count of games after lastSeen globally)
       let drought = 0;
       if (item.lastSeen) {
-        const droughtCounts = await Promise.all(MODELS.map(model =>
+        const droughtCounts = await Promise.all(modelsToUse.map(model =>
           model.countDocuments({
             createdAt: { $gt: item.lastSeen },
             numbers: { $size: 20 }
@@ -91,75 +89,47 @@ export const getCombinedKenoQuickStats = async (req, res) => {
         ));
         drought = droughtCounts.reduce((a, b) => a + b, 0);
       } else {
-        drought = totalDraws; // Never seen in the current dataset
+        drought = totalDraws;
       }
 
-      // Define Status and Color logic for UI
       let status = "Normal";
       let isHot = false;
       let isCold = false;
       let recommended = false;
 
-      // Numbers with long droughts are typically "Cold" or "Overdue"
-      if (winPercent >= 26) {
-        status = "Very Hot";
-        isHot = true;
-        recommended = true;
-      } else if (winPercent >= 25.5) {
-        status = "Hot";
-        isHot = true;
-      } else if (winPercent <= 24) {
-        status = "Very Cold";
-        isCold = true;
-        recommended = true; // "Overdue" strategy
-      } else if (winPercent <= 24.5) {
-        status = "Cold";
-        isCold = true;
-      }
+      if (winPercent >= 26) { status = "Very Hot"; isHot = true; recommended = true; }
+      else if (winPercent >= 25.5) { status = "Hot"; isHot = true; }
+      else if (winPercent <= 24) { status = "Very Cold"; isCold = true; recommended = true; }
+      else if (winPercent <= 24.5) { status = "Cold"; isCold = true; }
 
       return {
         number: item.number,
         entries: item.entries,
         winPercent: winPercent.toFixed(2),
-        status,           // For labels
-        isHot,            // For red glows/colors
-        isCold,           // For blue glows/colors
-        recommended,      // For "Smart Pick" badges
+        status,
+        isHot,
+        isCold,
+        recommended,
         lastSeen: formattedDate,
-        lastWin: drought, // Changed from date to drought count as requested
-        drought: drought,
+        lastWin: drought,
+        drought,
         totalRaces: totalDraws,
       };
     }));
 
-    // Aggregation for Heads/Tails/Evens counts
     const headsTailsPipeline = [
       { $match: { numbers: { $size: 20 } } },
-      {
-        $project: {
-          numbers: 1,
-          result: 1,
-          heads: 1,
-          tails: 1,
-        },
-      },
+      { $project: { numbers: 1, result: 1, heads: 1, tails: 1 } },
     ];
 
     const headsTailsResults = await Promise.all(
-      MODELS.map((model) => model.aggregate(headsTailsPipeline))
+      modelsToUse.map((model) => model.aggregate(headsTailsPipeline))
     );
 
-    const headsTailsSummary = {
-      "Heads wins": 0,
-      "Tails wins": 0,
-      "Evens wins": 0,
-    };
+    const headsTailsSummary = { "Heads wins": 0, "Tails wins": 0, "Evens wins": 0 };
 
     headsTailsResults.flat().forEach((item) => {
       let result = item.result;
-
-      // If result is missing or contains garbage (like the login text seen in DB)
-      // calculate it on the fly from the numbers
       const isInvalid = !result || !["Heads wins", "Tails wins", "Evens wins"].includes(result);
 
       if (isInvalid && item.numbers && item.numbers.length === 20) {
@@ -178,6 +148,7 @@ export const getCombinedKenoQuickStats = async (req, res) => {
     res.json({
       success: true,
       totalRaces: totalDraws,
+      location: location.toUpperCase(),
       stats: finalStats,
       headsTailsStats: {
         headsWins: headsTailsSummary["Heads wins"],
@@ -194,17 +165,21 @@ export const getCombinedKenoQuickStats = async (req, res) => {
   }
 };
 
-// Graph-ready Keno Quick Stats
 export const getKenoGraphStats = async (req, res) => {
   try {
+    const { location = "ALL" } = req.query;
+    let modelsToUse = MODELS;
+
+    if (location !== "ALL") {
+      const locMap = { "NSW": NSW, "VIC": VIC, "ACT": ACT, "SA": SA };
+      if (locMap[location.toUpperCase()]) {
+        modelsToUse = [locMap[location.toUpperCase()]];
+      }
+    }
+
     const pipeline = [
       { $match: { numbers: { $size: 20 } } },
-      {
-        $project: {
-          createdAt: 1,
-          numbers: 1,
-        },
-      },
+      { $project: { createdAt: 1, numbers: 1 } },
       { $unwind: "$numbers" },
       {
         $group: {
@@ -225,7 +200,7 @@ export const getKenoGraphStats = async (req, res) => {
     ];
 
     const results = await Promise.all(
-      MODELS.map((model) => model.aggregate(pipeline))
+      modelsToUse.map((model) => model.aggregate(pipeline))
     );
 
     const statsMap = new Map();
@@ -244,14 +219,12 @@ export const getKenoGraphStats = async (req, res) => {
     });
 
     const totalDrawsPerState = await Promise.all(
-      MODELS.map((model) => model.countDocuments({ numbers: { $size: 20 } }))
+      modelsToUse.map((model) => model.countDocuments({ numbers: { $size: 20 } }))
     );
     const totalDraws = totalDrawsPerState.reduce((a, b) => a + b, 0);
 
-    // Final statistics processing with status logic
     const allStatsEnriched = Array.from(statsMap.values()).map((item) => {
       const winPercent = totalDraws ? (item.entries / totalDraws) * 100 : 0;
-      // Calculate how many games since last seen (Drought)
       const lastSeenDate = new Date(item.lastSeen);
       const now = new Date();
       const droughtDays = Math.floor((now - lastSeenDate) / (1000 * 60 * 60 * 24));
@@ -262,15 +235,9 @@ export const getKenoGraphStats = async (req, res) => {
       else if (winPercent <= 24) status = "Very Cold";
       else if (winPercent <= 24.5) status = "Cold";
 
-      return {
-        ...item,
-        winPercent,
-        status,
-        droughtDays
-      };
+      return { ...item, winPercent, status, droughtDays };
     });
 
-    // Top 20 hot numbers for bar chart
     const hotNumbers = [...allStatsEnriched]
       .sort((a, b) => b.entries - a.entries)
       .slice(0, 20)
@@ -281,7 +248,6 @@ export const getKenoGraphStats = async (req, res) => {
         status: item.status
       }));
 
-    // Top 20 cold/overdue numbers
     const coldNumbers = [...allStatsEnriched]
       .sort((a, b) => a.entries - b.entries)
       .slice(0, 20)
@@ -290,10 +256,9 @@ export const getKenoGraphStats = async (req, res) => {
         frequency: item.entries,
         percentage: item.winPercent.toFixed(2),
         status: item.status,
-        isOverdue: item.droughtDays > 0 // If not seen in today's runs
+        isOverdue: item.droughtDays > 0
       }));
 
-    // Number distribution for pie chart (frequency ranges)
     const frequencyRanges = {
       "Very Hot (26%+)": 0,
       "Hot (25.5-26%)": 0,
@@ -311,22 +276,14 @@ export const getKenoGraphStats = async (req, res) => {
       else frequencyRanges["Very Cold (<24%)"]++;
     });
 
-    // Recent trend data (last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const trendData = await Promise.all(
-      MODELS.map(async (model) => {
+      modelsToUse.map(async (model) => {
         return await model.aggregate([
           { $match: { createdAt: { $gte: thirtyDaysAgo }, numbers: { $size: 20 } } },
-          {
-            $group: {
-              _id: {
-                $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
-              },
-              count: { $sum: 1 },
-            },
-          },
+          { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } },
           { $sort: { _id: 1 } },
         ]);
       })
@@ -342,109 +299,51 @@ export const getKenoGraphStats = async (req, res) => {
       .map(([date, count]) => ({ date, draws: count }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    // Graph-ready response
+    // Shared logic for Heads/Tails/Evens
+    const headsTailsResults = await Promise.all(
+      modelsToUse.map((model) =>
+        model.aggregate([
+          { $match: { numbers: { $size: 20 } } },
+          { $project: { result: 1, numbers: 1 } },
+        ])
+      )
+    );
+    const summaryHT = { "Heads wins": 0, "Tails wins": 0, "Evens wins": 0 };
+    headsTailsResults.flat().forEach((item) => {
+      let res = item.result;
+      const isInvalid = !res || !["Heads wins", "Tails wins", "Evens wins"].includes(res);
+      if (isInvalid && item.numbers && item.numbers.length === 20) {
+        const hCount = item.numbers.filter(n => n >= 1 && n <= 40).length;
+        const tCount = item.numbers.filter(n => n >= 41 && n <= 80).length;
+        if (hCount > tCount) res = "Heads wins";
+        else if (tCount > hCount) res = "Tails wins";
+        else res = "Evens wins";
+      }
+      if (summaryHT[res] !== undefined) summaryHT[res]++;
+    });
+
     res.json({
       success: true,
+      location: location.toUpperCase(),
       graphData: {
-        // Bar chart: Top hot numbers
-        hotNumbersChart: {
-          type: "bar",
-          title: "Top 20 Hot Numbers",
-          data: hotNumbers,
-          xAxis: "number",
-          yAxis: "frequency",
-        },
-
-        // Top cold/overdue numbers
-        coldNumbersChart: {
-          type: "bar",
-          title: "Top 20 Cold/Overdue Numbers",
-          data: coldNumbers,
-          xAxis: "number",
-          yAxis: "frequency",
-        },
-
-        // Pie chart: Number frequency distribution
+        hotNumbersChart: { type: "bar", title: "Top 20 Hot Numbers", data: hotNumbers, xAxis: "number", yAxis: "frequency" },
+        coldNumbersChart: { type: "bar", title: "Top 20 Cold/Overdue Numbers", data: coldNumbers, xAxis: "number", yAxis: "frequency" },
         frequencyDistribution: {
-          type: "pie",
-          title: "Number Frequency Distribution",
-          data: Object.entries(frequencyRanges).map(([range, count]) => ({
-            name: range,
-            value: count,
-            percentage: ((count / 80) * 100).toFixed(1), // 80 numbers total
-          })),
+          type: "pie", title: "Number Frequency Distribution",
+          data: Object.entries(frequencyRanges).map(([range, count]) => ({ name: range, value: count, percentage: ((count / 80) * 100).toFixed(1) }))
         },
-
-        // Line chart: Draw frequency over time
-        drawTrendChart: {
-          type: "line",
-          title: "Daily Draw Frequency (Last 30 Days)",
-          data: drawTrend,
-          xAxis: "date",
-          yAxis: "draws",
-        },
-
-        // Pie chart: Heads/Tails/Evens distribution
+        drawTrendChart: { type: "line", title: "Daily Draw Frequency (Last 30 Days)", data: drawTrend, xAxis: "date", yAxis: "draws" },
         headsTailsDistribution: {
-          type: "pie",
-          title: "Heads, Tails & Evens Distribution",
-          data: await (async () => {
-            const headsTailsResults = await Promise.all(
-              MODELS.map((model) =>
-                model.aggregate([
-                  { $match: { numbers: { $size: 20 } } },
-                  { $project: { result: 1, numbers: 1 } },
-                ])
-              )
-            );
-            const summary = { "Heads wins": 0, "Tails wins": 0, "Evens wins": 0 };
-            headsTailsResults.flat().forEach((item) => {
-              let res = item.result;
-              const isInvalid = !res || !["Heads wins", "Tails wins", "Evens wins"].includes(res);
-              if (isInvalid && item.numbers && item.numbers.length === 20) {
-                const hCount = item.numbers.filter(n => n >= 1 && n <= 40).length;
-                const tCount = item.numbers.filter(n => n >= 41 && n <= 80).length;
-                if (hCount > tCount) res = "Heads wins";
-                else if (tCount > hCount) res = "Tails wins";
-                else res = "Evens wins";
-              }
-              if (summary[res] !== undefined) summary[res]++;
-            });
-            return Object.entries(summary).map(([name, value]) => ({
-              name,
-              value,
-              percentage: totalDraws ? ((value / totalDraws) * 100).toFixed(1) : "0",
-            }));
-          })(),
+          type: "pie", title: "Heads, Tails & Evens Distribution",
+          data: Object.entries(summaryHT).map(([name, value]) => ({ name, value, percentage: totalDraws ? ((value / totalDraws) * 100).toFixed(1) : "0" }))
         },
-
-        // Summary cards
         summaryCards: [
-          {
-            title: "Total Draws",
-            value: totalDraws,
-            icon: "gamepad",
-            color: "blue",
-          },
-          {
-            title: "Max Hits",
-            value: hotNumbers.length > 0 ? hotNumbers[0].frequency : 0,
-            icon: "fire",
-            color: "red",
-          },
-          {
-            title: "Avg Frequency",
-            value: (totalDraws * 0.25).toFixed(0),
-            icon: "chart-line",
-            color: "green",
-          },
+          { title: "Total Draws", value: totalDraws, icon: "gamepad", color: "blue" },
+          { title: "Max Hits", value: hotNumbers.length > 0 ? hotNumbers[0].frequency : 0, icon: "fire", color: "red" },
+          { title: "Avg Frequency", value: (totalDraws * 0.25).toFixed(0), icon: "chart-line", color: "green" },
         ],
       },
-      metadata: {
-        totalDraws,
-        totalNumbers: 80,
-        lastUpdated: new Date().toISOString(),
-      },
+      metadata: { totalDraws, totalNumbers: 80, lastUpdated: new Date().toISOString() },
     });
   } catch (err) {
     console.error("Keno graph stats error:", err);
