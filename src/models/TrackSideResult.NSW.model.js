@@ -10,12 +10,20 @@ const TrackSideResultSchema = new mongoose.Schema({
   date: { type: String },
   timestamp: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now },
-   runners: [
+  runners: [
     {
       horseNo: { type: Number },   // 1–12
       position: { type: Number }   // 1,2,3,4...
     }
-  ]
+  ],
+  dividends: {
+    win: { type: String, default: "" },
+    place: { type: String, default: "" },
+    quinella: { type: String, default: "" },
+    exacta: { type: String, default: "" },
+    trifecta: { type: String, default: "" },
+    first4: { type: String, default: "" }
+  }
 });
 
 const NSWTrackSideResult = mongoose.model(

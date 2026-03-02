@@ -196,18 +196,26 @@ export const scrapeTrackSideResults = async () => {
             const runnerEls = element.querySelectorAll(
               'span[data-testid^="runner-"]'
             );
-            let numbers = Array.from(runnerEls)
-              .map((n) => parseInt(n.textContent.trim(), 10))
-              .filter((n) => !isNaN(n));
 
-            // Deduplicate
-            numbers = Array.from(new Set(numbers));
+            // Extract runners data including position for DB consistency
+            const runners = Array.from(runnerEls).map((n, idx) => {
+              const horseNo = parseInt(n.textContent.trim(), 10);
+              return { horseNo, position: idx + 1 };
+            }).filter(r => !isNaN(r.horseNo));
+
+            const numbers = runners.map(r => r.horseNo);
+
+            // Extract Dividends
+            const divs = {};
+            const divTypes = ['win', 'place', 'quinella', 'exacta', 'trifecta', 'first4'];
+            divTypes.forEach(type => {
+              const divEl = element.querySelector(`span[data-testid="result-${type}-dividend"]`);
+              divs[type] = divEl ? divEl.textContent.trim() : "";
+            });
 
             if (gameName && numbers.length > 0) {
-              // Check if already added
               const exists = gameResults.some((g) => g.gameName === gameName);
               if (!exists) {
-                // Parse game number from "Game 123"
                 const gameNumberMatch = gameName.match(/Game\s+(\d+)/i);
                 const gameNumber = gameNumberMatch
                   ? parseInt(gameNumberMatch[1], 10)
@@ -217,6 +225,8 @@ export const scrapeTrackSideResults = async () => {
                   gameName,
                   gameNumber,
                   numbers,
+                  runners,
+                  dividends: divs,
                   timestamp: new Date().toISOString(),
                 });
               }
@@ -290,10 +300,12 @@ export const scrapeTrackSideResults = async () => {
             gameName: result.gameName,
             gameNumber: result.gameNumber,
             numbers: result.numbers,
+            runners: result.runners,
+            dividends: result.dividends,
             location,
             date: new Date().toISOString().split("T")[0],
             timestamp: new Date(),
-            scraperVersion: "2.0",
+            scraperVersion: "2.1",
           };
 
           // Use atomic $set to avoid replacement semantics and ensure defaults
