@@ -197,11 +197,16 @@ export const scrapeTrackSideResults = async () => {
               'span[data-testid^="runner-"]'
             );
 
-            // Extract runners data including position for DB consistency
-            const runners = Array.from(runnerEls).map((n, idx) => {
+            // Deduplicate (since they appear in summary and details)
+            const seen = new Set();
+            const runners = [];
+            Array.from(runnerEls).forEach((n) => {
               const horseNo = parseInt(n.textContent.trim(), 10);
-              return { horseNo, position: idx + 1 };
-            }).filter(r => !isNaN(r.horseNo));
+              if (!isNaN(horseNo) && !seen.has(horseNo)) {
+                seen.add(horseNo);
+                runners.push({ horseNo, position: seen.size });
+              }
+            });
 
             const numbers = runners.map(r => r.horseNo);
 

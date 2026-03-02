@@ -200,9 +200,10 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
                     // Dividend Tracking
                     const divKey = type.toLowerCase();
                     const divStr = race.dividends ? race.dividends[divKey] : null;
-                    if (divStr && divStr.includes("$")) {
-                        const val = parseFloat(divStr.replace("$", "").replace(",", ""));
-                        if (!isNaN(val)) {
+                    if (divStr) {
+                        const cleanVal = String(divStr).replace(/[^\d.]/g, "");
+                        const val = parseFloat(cleanVal);
+                        if (!isNaN(val) && val > 0) {
                             totalDivValue += val;
                             divCount++;
                         }

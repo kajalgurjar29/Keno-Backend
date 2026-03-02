@@ -102,9 +102,11 @@ const processStats = (acc, combo, gameIndex, date, isLatestDay, dividendStr = nu
     if (isLatestDay) entry.last24h++;
 
     // Process Dividend
-    if (dividendStr && typeof dividendStr === "string" && dividendStr.includes("$")) {
-        const val = parseFloat(dividendStr.replace("$", "").replace(",", ""));
-        if (!isNaN(val)) {
+    if (dividendStr) {
+        // Robust numeric extraction: Remove non-digit/dot chars (except first minus)
+        const cleanVal = String(dividendStr).replace(/[^\d.]/g, "");
+        const val = parseFloat(cleanVal);
+        if (!isNaN(val) && val > 0) {
             entry.divSum += val;
             entry.divCount++;
         }

@@ -190,6 +190,7 @@ export const getLatestTrackSideResult = async (req, res) => {
         },
 
         runners: sortedRunners,
+        dividends: result.dividends || {},
       },
     });
   } catch (error) {
@@ -244,6 +245,7 @@ export const getLatestResults = async (req, res) => {
         },
 
         runners: sortedRunners,
+        dividends: trackSide.dividends || {},
       };
     }
 
