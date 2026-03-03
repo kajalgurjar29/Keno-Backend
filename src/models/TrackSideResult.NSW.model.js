@@ -23,6 +23,16 @@ const TrackSideResultSchema = new mongoose.Schema({
     exacta: { type: String, default: "" },
     trifecta: { type: String, default: "" },
     first4: { type: String, default: "" }
+  },
+  payouts: {
+    win: { type: Number },
+    place1: { type: Number },
+    place2: { type: Number },
+    place3: { type: Number },
+    quinella: { type: Number },
+    exacta: { type: Number },
+    trifecta: { type: Number },
+    first4: { type: Number }
   }
 });
 

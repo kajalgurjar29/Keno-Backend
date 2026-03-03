@@ -76,7 +76,7 @@ const getRunnersByPosition = (runners = []) => {
 };
 
 // Helper to process stats
-const processStats = (acc, combo, gameIndex, date, isLatestDay, dividendStr = null) => {
+const processStats = (acc, combo, gameIndex, date, isLatestDay, dividendStr = null, payoutValue = null) => {
     if (!acc[combo]) {
         acc[combo] = {
             count: 0,
@@ -101,15 +101,18 @@ const processStats = (acc, combo, gameIndex, date, isLatestDay, dividendStr = nu
     entry.lastDate = date;
     if (isLatestDay) entry.last24h++;
 
-    // Process Dividend
-    if (dividendStr) {
-        // Robust numeric extraction: Remove non-digit/dot chars (except first minus)
-        const cleanVal = String(dividendStr).replace(/[^\d.]/g, "");
-        const val = parseFloat(cleanVal);
-        if (!isNaN(val) && val > 0) {
-            entry.divSum += val;
-            entry.divCount++;
-        }
+    // Process Dividend: Prefer dividendStr if it's a non-empty string, else use payoutValue
+    let finalVal = null;
+    if (dividendStr && typeof dividendStr === "string" && dividendStr.trim() !== "") {
+        const cleanVal = dividendStr.replace(/[^\d.]/g, "");
+        finalVal = parseFloat(cleanVal);
+    } else if (payoutValue !== null && payoutValue !== undefined) {
+        finalVal = typeof payoutValue === "number" ? payoutValue : parseFloat(payoutValue);
+    }
+
+    if (finalVal !== null && !isNaN(finalVal) && finalVal > 0) {
+        entry.divSum += finalVal;
+        entry.divCount++;
     }
 };
 
@@ -164,7 +167,7 @@ export const getTop10Exotics = async (req, res) => {
 
         let allRacesRaw = [];
         for (const M of modelsToUse) {
-            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1, dividends: 1 }).lean();
+            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1, dividends: 1, payouts: 1 }).lean();
             allRacesRaw = allRacesRaw.concat(races);
         }
 
@@ -175,7 +178,16 @@ export const getTop10Exotics = async (req, res) => {
                 uniqueRacesMap.set(id, r);
             } else {
                 const existing = uniqueRacesMap.get(id);
-                if (!existing.dividends && r.dividends) existing.dividends = r.dividends;
+                // Prefer the one that has dividends or payouts
+                const rHasData = (r.dividends && Object.values(r.dividends).some(v => v !== "")) || (r.payouts && Object.keys(r.payouts).length > 0);
+                const existingHasData = (existing.dividends && Object.values(existing.dividends).some(v => v !== "")) || (existing.payouts && Object.keys(existing.payouts).length > 0);
+
+                if (!existingHasData && rHasData) {
+                    uniqueRacesMap.set(id, r);
+                } else {
+                    if (!existing.dividends && r.dividends) existing.dividends = r.dividends;
+                    if (!existing.payouts && r.payouts) existing.payouts = r.payouts;
+                }
             }
         });
 
@@ -217,22 +229,23 @@ export const getTop10Exotics = async (req, res) => {
 
             const processAllTypes = (targetMap) => {
                 const divs = race.dividends || {};
+                const payouts = race.payouts || {};
 
                 const qCombo = [r1, r2].sort((a, b) => a - b).join("-");
-                processStats(targetMap.Quinella, qCombo, index, raceDate, isLatestDay, divs.quinella);
+                processStats(targetMap.Quinella, qCombo, index, raceDate, isLatestDay, divs.quinella, payouts.quinella);
 
                 const eCombo = `${r1}-${r2}`;
-                processStats(targetMap.Exacta, eCombo, index, raceDate, isLatestDay, divs.exacta);
+                processStats(targetMap.Exacta, eCombo, index, raceDate, isLatestDay, divs.exacta, payouts.exacta);
 
                 if (nums.length >= 3) {
                     const r3 = nums[2];
                     const tCombo = `${r1}-${r2}-${r3}`;
-                    processStats(targetMap.Trifecta, tCombo, index, raceDate, isLatestDay, divs.trifecta);
+                    processStats(targetMap.Trifecta, tCombo, index, raceDate, isLatestDay, divs.trifecta, payouts.trifecta);
 
                     if (nums.length >= 4) {
                         const r4 = nums[3];
                         const fCombo = `${r1}-${r2}-${r3}-${r4}`;
-                        processStats(targetMap.FirstFour, fCombo, index, raceDate, isLatestDay, divs.first4);
+                        processStats(targetMap.FirstFour, fCombo, index, raceDate, isLatestDay, divs.first4, payouts.first4);
                     }
                 }
             };
@@ -297,7 +310,7 @@ export const getTop10Exotics24h = async (req, res) => {
 
         let allRacesRaw = [];
         for (const M of modelsToUse) {
-            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1, dividends: 1 })
+            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, location: 1, gameId: 1, dividends: 1, payouts: 1 })
                 .sort({ createdAt: -1 })
                 .lean();
             allRacesRaw = allRacesRaw.concat(races);
@@ -310,7 +323,16 @@ export const getTop10Exotics24h = async (req, res) => {
                 uniqueRacesMap.set(id, r);
             } else {
                 const existing = uniqueRacesMap.get(id);
-                if (!existing.dividends && r.dividends) existing.dividends = r.dividends;
+                // Prefer the one that has dividends or payouts
+                const rHasData = (r.dividends && Object.values(r.dividends).some(v => v !== "")) || (r.payouts && Object.keys(r.payouts).length > 0);
+                const existingHasData = (existing.dividends && Object.values(existing.dividends).some(v => v !== "")) || (existing.payouts && Object.keys(existing.payouts).length > 0);
+
+                if (!existingHasData && rHasData) {
+                    uniqueRacesMap.set(id, r);
+                } else {
+                    if (!existing.dividends && r.dividends) existing.dividends = r.dividends;
+                    if (!existing.payouts && r.payouts) existing.payouts = r.payouts;
+                }
             }
         });
 
@@ -351,22 +373,23 @@ export const getTop10Exotics24h = async (req, res) => {
 
             const processAllTypes = (targetMap) => {
                 const divs = race.dividends || {};
+                const payouts = race.payouts || {};
 
                 const qCombo = [r1, r2].sort((a, b) => a - b).join("-");
-                processStats(targetMap.Quinella, qCombo, index, raceDate, isLatestDay, divs.quinella);
+                processStats(targetMap.Quinella, qCombo, index, raceDate, isLatestDay, divs.quinella, payouts.quinella);
 
                 const eCombo = `${r1}-${r2}`;
-                processStats(targetMap.Exacta, eCombo, index, raceDate, isLatestDay, divs.exacta);
+                processStats(targetMap.Exacta, eCombo, index, raceDate, isLatestDay, divs.exacta, payouts.exacta);
 
                 if (nums.length >= 3) {
                     const r3 = nums[2];
                     const tCombo = `${r1}-${r2}-${r3}`;
-                    processStats(targetMap.Trifecta, tCombo, index, raceDate, isLatestDay, divs.trifecta);
+                    processStats(targetMap.Trifecta, tCombo, index, raceDate, isLatestDay, divs.trifecta, payouts.trifecta);
 
                     if (nums.length >= 4) {
                         const r4 = nums[3];
                         const fCombo = `${r1}-${r2}-${r3}-${r4}`;
-                        processStats(targetMap.FirstFour, fCombo, index, raceDate, isLatestDay, divs.first4);
+                        processStats(targetMap.FirstFour, fCombo, index, raceDate, isLatestDay, divs.first4, payouts.first4);
                     }
                 }
             };
