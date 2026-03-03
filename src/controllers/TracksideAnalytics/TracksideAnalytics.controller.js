@@ -191,9 +191,15 @@ export const getTop10Exotics = async (req, res) => {
         const threshold360 = Math.max(0, totalGames - 360);
         const threshold1000 = Math.max(0, totalGames - 1000);
 
-        const uniqueDates = [...new Set(allRaces.map(r => r.date).filter(Boolean))].sort();
-        const totalDays = uniqueDates.length || 1;
-        const latestDate = uniqueDates[uniqueDates.length - 1];
+        // Date & Day Calculation Fix
+        const rawDates = allRaces.map(r => r.date).filter(Boolean);
+        const validDates = rawDates.filter(d => d !== "1970-01-01");
+        const uniqueDates = [...new Set(validDates)].sort();
+
+        const countInvalidDate = allRaces.filter(r => r.date === "1970-01-01" || !r.date).length;
+        const totalDaysEstimates = (countInvalidDate / 356.45);
+        const totalDays = Math.max(1, uniqueDates.length + Math.round(totalDaysEstimates));
+        const latestDate = uniqueDates.length > 0 ? (uniqueDates[uniqueDates.length - 1] || "2026-03-02") : "2026-03-02";
 
         allRaces.forEach((race, index) => {
             let nums = race.numbers || [];
