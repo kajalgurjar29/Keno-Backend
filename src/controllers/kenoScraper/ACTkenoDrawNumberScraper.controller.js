@@ -261,6 +261,7 @@ export const scrapeACTKenoByGame = async () => {
 };
 
 export const scrapeACTKeno = scrapeACTKenoByGame;
+export const scrapeATCKeno = scrapeACTKenoByGame;
 export const getKenoResultsAtc = async (req, res) => {
   try {
     const results = await KenoResult.find({
