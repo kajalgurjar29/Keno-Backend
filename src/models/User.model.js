@@ -182,6 +182,10 @@ const userSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    knownIPs: {
+      type: [String],
+      default: [],
+    },
     notificationPreferences: {
       activity: {
         email: { type: Boolean, default: true },

@@ -28,7 +28,7 @@ export const getUserData = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const user = await User.findById(id).select("-password -role");
+    const user = await User.findById(id).select("-password -role -knownIPs");
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -78,7 +78,7 @@ export const updateUserData = async (req, res) => {
       id,
       { fullName, email, dob },
       { new: true, runValidators: true }
-    ).select("-password -role");
+    ).select("-password -role -knownIPs");
 
     if (!updatedUser) {
       return res.status(404).json({ message: "User not found" });
@@ -107,7 +107,7 @@ export const getAllUsers = async (req, res) => {
   try {
     // Fetch only verified users, excluding password and role
     const users = await User.find({ isVerified: true }).select(
-      "-password -role"
+      "-password -role -knownIPs"
     );
 
     if (!users || users.length === 0) {
@@ -139,7 +139,7 @@ export const changeUserStatus = async (req, res) => {
     const user = await User.findByIdAndUpdate(
       id,
       { status },
-      { new: true, select: "-password -otp -otpExpiry" }
+      { new: true, select: "-password -otp -otpExpiry -knownIPs" }
     );
 
     if (!user) {

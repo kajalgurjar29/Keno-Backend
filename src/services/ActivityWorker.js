@@ -20,14 +20,37 @@ class ActivityWorker {
 
         // 2. Successful Login
         eventBus.on(EVENTS.USER_LOGGED_IN, async ({ user, ip }) => {
-            await NotificationService.notifyUser({
-                userId: user._id,
-                title: "Login Detected",
-                body: `New login to your account detected from ${ip || 'unknown IP'}.`,
-                category: "activity",
-                priority: "low",
-                metadata: { type: 'security' }
-            });
+            if (!ip) return; // Can't verify system without IP
+
+            // Check if this is a new IP/System
+            const isNewSystem = !user.knownIPs || !user.knownIPs.includes(ip);
+
+            if (isNewSystem) {
+                console.log(`🛡️ New login detected from IP: ${ip}. Notifying user...`);
+
+                await NotificationService.notifyUser({
+                    userId: user._id,
+                    title: "Login Detected",
+                    body: `New login to your account detected from ${ip}. If this wasn't you, please change your password immediately.`,
+                    category: "activity",
+                    priority: "low",
+                    metadata: { type: 'security', ip }
+                });
+
+                // Save this as a known system for next time
+                try {
+                    // We use updateOne instead of user.save() to be safer within the event loop
+                    const UserModel = user.constructor;
+                    await UserModel.updateOne(
+                        { _id: user._id },
+                        { $addToSet: { knownIPs: ip } }
+                    );
+                } catch (saveErr) {
+                    console.error("Failed to save new known IP:", saveErr.message);
+                }
+            } else {
+                console.log(`✅ Login from known system (${ip}). skipping notification.`);
+            }
         });
 
         // 3. Password Change
