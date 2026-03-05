@@ -55,7 +55,6 @@ const retry = async (fn, retries = 3, delay = 2000) => {
 
 const killZombieChromium = async () => {
   try {
-    // Shared Environment Fix: Only taskkill on Windows. pkill on Linux causes "Target closed" for other scrapers.
     if (process.platform === "win32") {
       await execAsync("taskkill /F /IM chrome.exe /T || taskkill /F /IM chromium.exe /T").catch(() => { });
     }
@@ -90,7 +89,7 @@ export const scrapeACTKenoByGame = async () => {
     try {
       ({ browser, page } = await launchBrowser());
 
-      // 🛰️ LIVE DATA FIX: Explicitly force ACT requests
+      // 🛰️ LIVE DATA FIX: FORCE KDS calls to ACT
       await page.setRequestInterception(true);
       page.on('request', interceptedRequest => {
         let url = interceptedRequest.url();
@@ -103,12 +102,15 @@ export const scrapeACTKenoByGame = async () => {
       });
 
       console.log("✈️ ACT: Navigating to results page...");
-      const response = await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
+      const response = await page.goto(targetUrl, {
+        waitUntil: "networkidle2",
+        timeout: 60000
+      });
       if (!response || !response.ok()) throw new Error(`Bad response: ${response?.status()}`);
 
-      await new Promise(r => setTimeout(r, 5000));
+      await new Promise(r => setTimeout(r, 6000));
 
-      // 🔍 Dismiss any popups that might be blocking the view
+      // 🔍 Dismiss popups
       await page.evaluate(() => {
         const closeSelectors = [
           '[data-id="close-login-dialog-button"]',
@@ -124,31 +126,39 @@ export const scrapeACTKenoByGame = async () => {
         ];
         closeSelectors.forEach(s => {
           const btn = document.querySelector(s);
-          if (btn && typeof btn.click === 'function') {
-            btn.click();
-          }
+          if (btn && typeof btn.click === 'function') btn.click();
         });
       });
 
-      // 🔁 Switch to ACT region
-      try {
-        await page.waitForSelector('[data-id="selectedJurisdiction"]', { timeout: 10000 });
-        const currentRegion = await page.evaluate(() => document.querySelector('[data-id="selectedJurisdiction"]')?.textContent?.trim());
+      await new Promise(r => setTimeout(r, 2000));
 
-        if (!currentRegion || !currentRegion.includes("ACT")) {
-          console.log("📍 Switching region to ACT...");
+      // 🔁 SWITCH TO ACT: Hardened for AWS
+      try {
+        await page.waitForSelector('[data-id="selectedJurisdiction"]', { timeout: 15000 });
+        let regionText = await page.evaluate(() => document.querySelector('[data-id="selectedJurisdiction"]')?.textContent?.trim() || "");
+
+        if (!regionText.includes("ACT")) {
+          console.log(`📍 Current region is [${regionText}], forcing switch to [ACT]...`);
           await page.click('[data-id="selectedJurisdiction"]');
-          await new Promise(r => setTimeout(r, 1000));
+          await new Promise(r => setTimeout(r, 2000));
+
           await page.evaluate(() => {
-            const options = Array.from(document.querySelectorAll('li[role="option"]'));
-            const act = options.find(el => el.textContent.includes("ACT"));
+            const items = Array.from(document.querySelectorAll('li[role="option"], .jurisdiction-option'));
+            const act = items.find(el => el.textContent.includes("ACT"));
             if (act) act.click();
           });
-          await new Promise(r => setTimeout(r, 4000));
+
+          await new Promise(r => setTimeout(r, 6000));
+
+          // Verify
+          regionText = await page.evaluate(() => document.querySelector('[data-id="selectedJurisdiction"]')?.textContent?.trim() || "");
+          console.log("📍 Verified Region After Switch:", regionText);
+        } else {
+          console.log("📍 Region already correctly set to ACT.");
         }
       } catch (e) { console.warn("⚠️ ACT Region switch failed:", e.message); }
 
-      await page.waitForSelector(".game-board-grid", { timeout: 20000 });
+      await page.waitForSelector(".game-board-grid", { timeout: 30000 });
 
       const games = await page.evaluate(() => {
         const dateInput = document.querySelector('input[data-id="check-results-date-input"]');
@@ -166,7 +176,7 @@ export const scrapeACTKenoByGame = async () => {
 
       console.log(`📊 ACT: Scraped ${games.length} games from DOM.`);
 
-      // 📡 LIVE API FETCH: Capture absolute latest game from KDS
+      // 📡 LIVE API FETCH
       try {
         const liveGame = await page.evaluate(async () => {
           const res = await fetch("https://api-info-act.keno.com.au/v2/games/kds?jurisdiction=ACT");
@@ -190,12 +200,12 @@ export const scrapeACTKenoByGame = async () => {
         }
       } catch (ae) { console.warn("⚠️ ACT Live API fetch failed:", ae.message); }
 
-      const resultsList = [];
+      const resultsSaved = [];
       for (const game of games) {
         game.numbers = normalizeKenoNumbers(game.numbers);
 
         if (!hasValidKenoNumbers(game.numbers)) {
-          console.warn(`⚠️ skipping draw ${game.draw} - incomplete numbers (${game.numbers.length})`);
+          console.warn(`⚠️ Draw ${game.draw} skipped - incomplete numbers (${game.numbers.length})`);
           continue;
         }
 
@@ -216,38 +226,33 @@ export const scrapeACTKenoByGame = async () => {
           return cleaned || "REG";
         };
         const lines = game.rawText.split('\n');
-        game.bonus = sanitizeBonus(lines[lines.length - 1]);
+        game.bonus = sanitizeBonus(lines[lines.length - 1] || game.bonus);
 
         game.drawid = `${game.draw}_${game.date}`;
         game.location = "ACT";
 
         try {
-          const existing = await KenoResult.findOne({ drawid: game.drawid })
-            .select("_id numbers")
-            .lean();
+          const existing = await KenoResult.findOne({ drawid: game.drawid }).lean();
 
-          let inserted = false;
           if (!existing) {
             await KenoResult.create(game);
-            inserted = true;
-          } else if (!hasValidKenoNumbers(existing.numbers || [])) {
-            await KenoResult.updateOne({ _id: existing._id }, { $set: game });
-            console.log(`🔧 ACT repaired malformed draw ${game.draw}`);
-          }
-
-          if (inserted) {
-            console.log(`✅ ACT Inserted: Draw ${game.draw}`);
-            resultsList.push(game);
+            console.log(`💾 ACT Stored: Draw ${game.draw}`);
+            resultsSaved.push(game);
             try {
               const io = getIO();
               io.emit("newResult", { type: "KENO", location: "ACT", ...game });
               eventBus.emit(EVENTS.NEW_RESULT_PUBLISHED, { type: "KENO", location: "ACT", data: game });
             } catch (_) { }
+          } else {
+            if (!hasValidKenoNumbers(existing.numbers || [])) {
+              await KenoResult.updateOne({ _id: existing._id }, { $set: game });
+              console.log(`🔧 ACT Repaired: Draw ${game.draw}`);
+            }
           }
         } catch (dbErr) { console.error(`❌ ACT DB error:`, dbErr.message); }
       }
       await safeClose(browser);
-      return resultsList.length > 0 ? resultsList[resultsList.length - 1] : (games.length > 0 ? games[games.length - 1] : null);
+      return resultsSaved.length > 0 ? resultsSaved[resultsSaved.length - 1] : (games.length > 0 ? games[games.length - 1] : null);
     } catch (err) {
       console.error("❌ ACT Scraper failed:", err.message);
       await safeClose(browser);

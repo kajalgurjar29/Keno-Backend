@@ -70,63 +70,36 @@ const getLatestKenoRecord = async (location) => {
             $convert: {
               input: "$draw",
               to: "int",
-              onError: -1,
-              onNull: -1,
+              onError: 0,
+              onNull: 0,
             },
           },
         },
       },
-    ];
-
-    if (Number.isInteger(ceiling)) {
-      pipeline.push({
-        $match: { drawNum: { $lte: ceiling + MAX_DRAW_AHEAD } },
-      });
-    }
-
-    pipeline.push(
-      { $sort: { createdAt: -1, drawNum: -1 } },
+      { $sort: { drawNum: -1, createdAt: -1 } }, // 🔥 Sort by Draw Number First
       { $limit: 1 },
       { $project: { drawNum: 0 } },
-    );
+    ];
 
     const [latest] = await kenoModels[sourceLocation].aggregate(pipeline);
     return latest || null;
   }
 
+  // If no location provided, get latest across all but return with explicit labels
   const latestByState = await Promise.all(
     Object.entries(kenoModels).map(async ([loc, Model]) => {
-      const ceiling = await fetchLiveDrawCeiling(loc);
       const pipeline = [
         { $match: validNumbersFilter },
         {
           $addFields: {
-            drawNum: {
-              $convert: {
-                input: "$draw",
-                to: "int",
-                onError: -1,
-                onNull: -1,
-              },
-            },
+            drawNum: { $convert: { input: "$draw", to: "int", onError: 0, onNull: 0 } },
           },
         },
-      ];
-
-      if (Number.isInteger(ceiling)) {
-        pipeline.push({
-          $match: { drawNum: { $lte: ceiling + MAX_DRAW_AHEAD } },
-        });
-      }
-
-      pipeline.push(
-        { $sort: { createdAt: -1, drawNum: -1 } },
+        { $sort: { drawNum: -1, createdAt: -1 } },
         { $limit: 1 },
-        { $project: { drawNum: 0 } },
-      );
-
+      ];
       const rows = await Model.aggregate(pipeline);
-      return rows[0] || null;
+      return rows[0] ? { ...rows[0], location: loc } : null;
     }),
   );
 

@@ -9,7 +9,6 @@ import { exec } from "child_process";
 
 const execAsync = util.promisify(exec);
 
-// ✅ Use stealth plugin but disable problematic evasions
 const stealth = StealthPlugin();
 stealth.enabledEvasions.delete("user-agent-override");
 stealth.enabledEvasions.delete("navigator.plugins");
@@ -45,79 +44,73 @@ const validNumbersExpr = {
   },
 };
 
-// Retry wrapper
 const retry = async (fn, retries = 3, delay = 2000) => {
   let lastError;
   for (let i = 0; i < retries; i++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastError = err;
-      console.warn(`Retry ${i + 1}/${retries} failed: ${err.message}`);
-      if (i < retries - 1) await new Promise((r) => setTimeout(r, delay));
-    }
+    try { return await fn(); }
+    catch (err) { lastError = err; if (i < retries - 1) await new Promise((r) => setTimeout(r, delay)); }
   }
   throw lastError;
 };
 
-// Kill any existing Chromium/Chrome processes
 const killZombieChromium = async () => {
   try {
-    // Shared Environment Fix: Only taskkill on Windows. pkill on Linux causes "Target closed" for other scrapers.
     if (process.platform === "win32") {
       await execAsync("taskkill /F /IM chrome.exe /T || taskkill /F /IM chromium.exe /T").catch(() => { });
     }
   } catch (_) { }
 };
 
-// Safe close browser
 const safeClose = async (browser) => {
   if (!browser) return;
-  try {
-    await browser.close();
-  } catch {
-    await killZombieChromium();
-  }
+  try { await browser.close(); } catch { await killZombieChromium(); }
 };
 
-// Main scraper function with retries and DB save
-export const scrapeNSWKenobyGame = async () => {
-  const proxyHost = process.env.PROXY_HOST || "gw.dataimpulse.com";
-  const proxyPort = process.env.PROXY_PORT || "823";
-  const proxyUser = process.env.PROXY_USER_NSW || "db8ccea8814b4d971c00";
-  const proxyPass = process.env.PROXY_PASS_NSW || "6be4142195f24494";
-  const executablePath = getChromiumPath() || null;
+// 🔧 Repair function to fix old data missing fields
+const repairNSWData = async () => {
+  try {
+    const malformed = await KenoResult.find({
+      $or: [
+        { location: { $exists: false } },
+        { location: "" },
+        { result: { $exists: false } }
+      ]
+    }).limit(100);
 
+    if (malformed.length > 0) {
+      console.log(`🔧 NSW: Repairing ${malformed.length} malformed records...`);
+      for (const doc of malformed) {
+        const heads = doc.numbers.filter(n => n >= 1 && n <= 40).length;
+        const tails = doc.numbers.filter(n => n >= 41 && n <= 80).length;
+        const result = heads > tails ? "Heads wins" : (tails > heads ? "Tails wins" : "Evens wins");
+
+        await KenoResult.updateOne(
+          { _id: doc._id },
+          { $set: { location: "NSW", result: doc.result || result } }
+        );
+      }
+    }
+  } catch (e) { console.warn("Repair failed:", e.message); }
+};
+
+export const scrapeNSWKenobyGame = async () => {
+  // Run repair at the start
+  await repairNSWData();
+
+  const proxyHost = process.env.PROXY_HOST || "au.decodo.com";
+  const proxyPort = process.env.PROXY_PORT || "30001";
+  const proxyUser = process.env.PROXY_USER_NSW || "spr1wu95yq";
+  const proxyPass = process.env.PROXY_PASS_NSW || "w06feLHNn1Cma3=ioy";
+  const executablePath = getChromiumPath() || null;
   const proxyUrl = `http://${proxyHost}:${proxyPort}`;
   const targetUrl = "https://www.keno.com.au/check-results";
 
   const launchBrowser = async () => {
-    const args = [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      `--proxy-server=${proxyUrl}`,
-    ];
-
-    const browser = await puppeteer.launch({
-      headless: true,
-      executablePath,
-      args,
-    });
-
+    const args = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", `--proxy-server=${proxyUrl}`];
+    const browser = await puppeteer.launch({ headless: true, executablePath, args });
     const page = await browser.newPage();
-
-    if (proxyUser && proxyPass) {
-      await page.authenticate({ username: proxyUser, password: proxyPass });
-    }
-
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-      "AppleWebKit/537.36 (KHTML, like Gecko) " +
-      "Chrome/124.0.0.0 Safari/537.36"
-    );
-    await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
-
+    if (proxyUser && proxyPass) await page.authenticate({ username: proxyUser, password: proxyPass });
+    await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
     return { browser, page };
   };
 
@@ -126,279 +119,136 @@ export const scrapeNSWKenobyGame = async () => {
     try {
       ({ browser, page } = await launchBrowser());
 
-      // 🛰️ LIVE DATA FIX: Redirect ACT requests to NSW
-      await page.setRequestInterception(true);
-      page.on('request', interceptedRequest => {
-        let url = interceptedRequest.url();
-        if (url.includes('api-info') && url.includes('jurisdiction=ACT')) {
-          const newUrl = url.replace('api-info-act', 'api-info-nsw').replace('jurisdiction=ACT', 'jurisdiction=NSW');
-          interceptedRequest.continue({ url: newUrl });
-        } else {
-          interceptedRequest.continue();
-        }
-      });
+      console.log("✈️ NSW: Navigating to results...");
+      const response = await page.goto(targetUrl, { waitUntil: "networkidle2", timeout: 60000 });
+      if (!response || !response.ok()) throw new Error(`Bad response: ${response?.status()}`);
 
-      console.log("✈️ Navigating to:", targetUrl);
-      const response = await page.goto(targetUrl, {
-        waitUntil: "domcontentloaded",
-        timeout: 45000,
-      });
+      await new Promise(r => setTimeout(r, 6000));
 
-      if (!response || !response.ok()) {
-        throw new Error(`Bad response: ${response?.status()}`);
-      }
-
-      // Allow some time for overlays/content to load
-      await new Promise(r => setTimeout(r, 5000));
-
-      // 🔍 Dismiss any popups that might be blocking the view
+      // Dismiss popups
       await page.evaluate(() => {
-        const closeSelectors = [
-          '[data-id="close-login-dialog-button"]',
-          '[data-id="close-continuous-play-modal-button"]',
-          '[data-id="reward-game-expiring-modal-close"]',
-          '[data-id="new-rewards-modal-close"]',
-          '[data-id="feature-highlight-modal-close"]',
-          '[data-id="suspended-account-modal-close-button"]',
-          '[data-id="locked-account-modal-close-button"]',
-          '[data-id="close-spend-limit-modal-button"]',
-          '.close-button',
-          '.modal-ok-button'
-        ];
+        const closeSelectors = ['[data-id="close-login-dialog-button"]', '[data-id="close-continuous-play-modal-button"]', '.close-button', '.modal-ok-button'];
         closeSelectors.forEach(s => {
           const btn = document.querySelector(s);
-          if (btn && typeof btn.click === 'function') {
-            console.log("Dismissing popup via selector:", s);
-            btn.click();
-          }
+          if (btn && typeof btn.click === 'function') btn.click();
         });
       });
 
-      // Wait a bit after dismissing
-      await new Promise(r => setTimeout(r, 2000));
-
-      // 🔁 Switch to NSW region (if not already there)
+      // Switch Region
       try {
-        await page.waitForSelector('[data-id="selectedJurisdiction"]', { timeout: 10000 });
-        const currentRegion = await page.evaluate(() => document.querySelector('[data-id="selectedJurisdiction"]')?.textContent?.trim());
-
-        if (!currentRegion || !currentRegion.includes("NSW")) {
-          console.log("📍 Switching region to NSW...");
+        await page.waitForSelector('[data-id="selectedJurisdiction"]', { timeout: 15000 });
+        let region = await page.evaluate(() => document.querySelector('[data-id="selectedJurisdiction"]')?.textContent?.trim() || "");
+        if (!region.includes("NSW")) {
+          console.log(`📍 Region switch needed (Current: ${region}). Target: NSW`);
           await page.click('[data-id="selectedJurisdiction"]');
-          await new Promise(r => setTimeout(r, 1000));
+          await new Promise(r => setTimeout(r, 2000));
           await page.evaluate(() => {
-            const options = Array.from(document.querySelectorAll('li[role="option"]'));
-            const nsw = options.find(el => el.textContent.includes("NSW"));
+            const items = Array.from(document.querySelectorAll('li[role="option"]'));
+            const nsw = items.find(el => el.textContent.includes("NSW"));
             if (nsw) nsw.click();
           });
-          await new Promise(r => setTimeout(r, 3000));
+          await new Promise(r => setTimeout(r, 5000));
         }
-      } catch (e) {
-        console.warn("⚠️ NSW Region switch failed:", e.message);
-      }
+      } catch (e) { console.warn("NSW Region switch failed:", e.message); }
 
-      // Wait for results grid
-      await page.waitForSelector(".game-board-grid", { timeout: 20000 });
+      await page.waitForSelector(".game-board-grid", { timeout: 30000 });
 
-      // 🔄 Extract ALL games visible on the page
       const games = await page.evaluate(() => {
         const dateInput = document.querySelector('input[data-id="check-results-date-input"]');
         const currentDate = dateInput ? dateInput.value.trim() : new Date().toLocaleDateString('en-AU').replace(/\//g, '-');
-
         const grids = Array.from(document.querySelectorAll(".game-board-grid"));
 
         return grids.map(grid => {
-          const heading = grid.querySelector(".game-board-status-heading")?.textContent ||
-            grid.querySelector(".game-number")?.textContent || "";
-
+          const heading = grid.querySelector(".game-board-status-heading")?.textContent || grid.querySelector(".game-number")?.textContent || "";
           const draw = heading.replace(/[^\d]/g, "");
-
-          // Get ONLY the 20 drawn balls in this grid
           const balls = Array.from(grid.querySelectorAll(".game-ball-wrapper.is-drawn, .game-ball-wrapper.is-placed, .keno-ball.is-drawn, .keno-ball.is-placed"))
-            .map(el => parseInt(el.textContent.trim(), 10))
-            .filter(n => !isNaN(n));
+            .map(el => parseInt(el.textContent.trim(), 10)).filter(n => !isNaN(n));
+          const resultLabel = grid.querySelector(".heads-tails-value")?.textContent?.trim() || grid.innerText;
+          const bonusLabel = grid.querySelector(".bonus-value")?.textContent?.trim() || "";
 
-          // Bonus search
-          const findValueInGrid = (label) => {
-            const elements = Array.from(grid.querySelectorAll("div, span, p, dt, label"));
-            const match = elements.find(el => el.textContent.trim().toLowerCase().includes(label.toLowerCase()));
-            if (!match) return "";
-            const parent = match.parentElement;
-            return parent?.querySelector("button, .pill, [class*='value'], .status-value")?.textContent?.trim() ||
-              match.nextElementSibling?.textContent?.trim() || "";
-          };
-
-          const bonusLabel = grid.querySelector(
-            ".game-results-status__multiplier-value, .game-status-bonus-value, .bonus-value, .game-bonus"
-          )?.textContent?.trim() || findValueInGrid("bonus");
-
-          // Result (Heads/Tails/Evens)
-          const resultLabel = grid.querySelector(
-            ".game-results-status__heads-tails-value, .game-status-heads-tails-value, .heads-tails-value, .heads-tails"
-          )?.textContent?.trim() || findValueInGrid("heads or tails") || grid.innerText;
-
-          return {
-            draw,
-            date: currentDate,
-            numbers: balls,
-            bonus: bonusLabel,
-            rawText: grid.innerText // used for fallback parsing
-          };
+          return { draw, date: currentDate, numbers: balls, result: resultLabel, bonus: bonusLabel, rawText: grid.innerText };
         }).filter(g => g.draw && g.numbers.length >= 20);
       });
 
-      console.log(`📊 Scraped ${games.length} games from the page.`);
+      console.log(`📊 NSW: Scraped ${games.length} games from DOM.`);
 
-      // 📡 LIVE API FETCH: Capture absolute latest game from KDS
-      try {
-        const liveGame = await page.evaluate(async () => {
-          const res = await fetch("https://api-info-nsw.keno.com.au/v2/games/kds?jurisdiction=NSW");
-          const data = await res.json();
-          if (data && data.current && data.current.draw) {
-            return {
-              draw: String(data.current["game-number"]),
-              numbers: data.current.draw,
-              result: data.current.variants?.["heads-or-tails"]?.result,
-              bonus: data.current.variants?.bonus || "REG"
-            };
-          }
-          return null;
-        });
-
-        if (liveGame && !games.find(g => g.draw === liveGame.draw)) {
-          console.log(`📡 NSW: Found live game via API: Draw ${liveGame.draw}`);
-          const dateInput = await page.evaluate(() => document.querySelector('input[data-id="check-results-date-input"]')?.value?.trim());
-          const currentDate = dateInput || new Date().toLocaleDateString('en-AU').replace(/\//g, '-');
-          games.push({ ...liveGame, date: currentDate, rawText: "" });
-        }
-      } catch (ae) { console.warn("⚠️ NSW Live API fetch failed:", ae.message); }
-
-      const results = [];
+      const resultsSaved = [];
       for (const game of games) {
-        // Post-process each game: Ensure 20 numbers and sort them
         game.numbers = normalizeKenoNumbers(game.numbers);
+        if (!hasValidKenoNumbers(game.numbers)) continue;
 
-        if (!hasValidKenoNumbers(game.numbers)) {
-          console.warn(`⚠️ skipping draw ${game.draw} - incomplete numbers (${game.numbers.length})`);
-          continue;
-        }
-
-        const headsCount = game.numbers.filter((n) => n >= 1 && n <= 40).length;
-        const tailsCount = game.numbers.filter((n) => n >= 41 && n <= 80).length;
+        const headsCount = game.numbers.filter(n => n >= 1 && n <= 40).length;
+        const tailsCount = game.numbers.filter(n => n >= 41 && n <= 80).length;
         game.heads = headsCount;
         game.tails = tailsCount;
-
         const rawResult = (game.result || "").toLowerCase();
-        if (game.rawText.toLowerCase().includes("heads wins") || rawResult.includes("heads")) game.result = "Heads wins";
-        else if (game.rawText.toLowerCase().includes("tails wins") || rawResult.includes("tails")) game.result = "Tails wins";
-        else if (game.rawText.toLowerCase().includes("evens wins") || rawResult.includes("evens")) game.result = "Evens wins";
-        else {
-          if (headsCount > tailsCount) game.result = "Heads wins";
-          else if (tailsCount > headsCount) game.result = "Tails wins";
-          else game.result = "Evens wins";
-        }
+        if (rawResult.includes("heads")) game.result = "Heads wins";
+        else if (rawResult.includes("tails")) game.result = "Tails wins";
+        else if (rawResult.includes("evens")) game.result = "Evens wins";
+        else game.result = headsCount > tailsCount ? "Heads wins" : (tailsCount > headsCount ? "Tails wins" : "Evens wins");
 
-        const sanitizeBonus = (text) => {
-          if (!text) return "REG";
-          const cleaned = text.trim();
-          if (cleaned.length > 10 || /login|account|password|enter|details|ready|ended|heads|tails|wins/i.test(cleaned)) {
-            return "REG";
-          }
-          return cleaned || "REG";
-        };
-        game.bonus = sanitizeBonus(game.bonus);
+        game.bonus = (game.bonus || "").length < 5 ? (game.bonus || "REG") : "REG";
         game.drawid = `${game.draw}_${game.date}`;
         game.location = "NSW";
 
-        // Upsert to DB
         try {
-          const existing = await KenoResult.findOne({ drawid: game.drawid })
-            .select("_id numbers")
-            .lean();
-
-          let inserted = false;
+          const existing = await KenoResult.findOne({ drawid: game.drawid }).lean();
           if (!existing) {
             await KenoResult.create(game);
-            inserted = true;
-          } else if (!hasValidKenoNumbers(existing.numbers || [])) {
-            await KenoResult.updateOne({ _id: existing._id }, { $set: game });
-            console.log(`🔧 NSW repaired malformed draw ${game.draw}`);
-          }
-
-          if (inserted) {
-            console.log(`✅ NSW Inserted: Draw ${game.draw}`);
-            results.push(game);
-
-            // Socket & EventBus
+            console.log(`💾 NSW Stored: Draw ${game.draw}`);
+            resultsSaved.push(game);
             try {
               const io = getIO();
-              io.emit("newResult", {
-                type: "KENO",
-                location: "NSW",
-                ...game
-              });
+              io.emit("newResult", { type: "KENO", location: "NSW", ...game });
               eventBus.emit(EVENTS.NEW_RESULT_PUBLISHED, { type: "KENO", location: "NSW", data: game });
             } catch (_) { }
+          } else {
+            console.log(`⏩ NSW: Draw ${game.draw} already exists in DB.`);
           }
-        } catch (dbErr) {
-          console.error(`❌ DB error for draw ${game.draw}:`, dbErr.message);
-        }
+        } catch (dbErr) { console.error(`❌ NSW DB error:`, dbErr.message); }
       }
 
       await safeClose(browser);
-      return results.length > 0 ? results[results.length - 1] : (games.length > 0 ? games[games.length - 1] : null);
+      return resultsSaved.length > 0 ? resultsSaved[resultsSaved.length - 1] : (games.length > 0 ? games[games.length - 1] : null);
     } catch (err) {
-      console.error("❌ runScraperOnce failed:", err.message);
+      console.error("❌ NSW Scraper failed:", err.message);
       await safeClose(browser);
       throw err;
     }
   };
 
-  return await retry(async () => {
-    // Avoid global pkill here for Linux stability
-    return await runScraperOnce();
-  }, 2, 5000);
+  return await retry(async () => { return await runScraperOnce(); }, 2, 5000);
 };
 
 export const scrapeNSWKeno = scrapeNSWKenobyGame;
-
-// Fetch recent/filtered results
 export const getKenoResults = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
-    const results = await KenoResult.find({
-      numbers: { $size: 20 },
-      ...validNumbersExpr,
-    })
+    let results = await KenoResult.find({ numbers: { $size: 20 }, ...validNumbersExpr })
       .sort({ createdAt: -1 })
-      .limit(limit);
-    res.status(200).json({ success: true, results });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
+      .limit(limit)
+      .lean();
 
+    // Safety: ensure location is present for frontend
+    results = results.map(r => ({ ...r, location: r.location || "NSW" }));
+
+    res.status(200).json({ success: true, results });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+};
 export const getFilteredKenoResults = async (req, res) => {
   try {
     const { firstGameNumber, lastGameNumber, date, limit = 50, page = 1 } = req.query;
     const filter = { numbers: { $size: 20 }, ...validNumbersExpr };
-
-    if (firstGameNumber && lastGameNumber) {
-      filter.draw = { $gte: String(firstGameNumber), $lte: String(lastGameNumber) };
-    }
+    if (firstGameNumber && lastGameNumber) filter.draw = { $gte: String(firstGameNumber), $lte: String(lastGameNumber) };
     if (date) {
       const start = new Date(date + "T00:00:00.000Z");
       const end = new Date(date + "T23:59:59.999Z");
       filter.createdAt = { $gte: start, $lte: end };
     }
-
     const limitNum = Number(limit);
     const skip = (Number(page) - 1) * limitNum;
     const totalResults = await KenoResult.countDocuments(filter);
     const results = await KenoResult.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum);
-
     res.status(200).json({ success: true, total: totalResults, page: Number(page), limit: limitNum, results });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
