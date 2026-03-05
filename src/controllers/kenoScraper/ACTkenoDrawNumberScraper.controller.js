@@ -55,10 +55,9 @@ const retry = async (fn, retries = 3, delay = 2000) => {
 
 const killZombieChromium = async () => {
   try {
+    // Shared Environment Fix: Only taskkill on Windows. pkill on Linux causes "Target closed" for other scrapers.
     if (process.platform === "win32") {
       await execAsync("taskkill /F /IM chrome.exe /T || taskkill /F /IM chromium.exe /T").catch(() => { });
-    } else {
-      await execAsync("pkill -f chromium || pkill -f chrome").catch(() => { });
     }
   } catch (_) { }
 };
@@ -257,12 +256,11 @@ export const scrapeACTKenoByGame = async () => {
   };
 
   return await retry(async () => {
-    await killZombieChromium();
     return await runScraperOnce();
   }, 2, 5000);
 };
 
-export const scrapeATCKeno = scrapeACTKenoByGame;
+export const scrapeACTKeno = scrapeACTKenoByGame;
 export const getKenoResultsAtc = async (req, res) => {
   try {
     const results = await KenoResult.find({

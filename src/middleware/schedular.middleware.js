@@ -9,74 +9,104 @@ import { scrapeTrackSideResultsWithRetry as scrapeACTTrackside } from "../contro
 import ScheduledWorker from "../services/ScheduledWorker.js";
 import User from "../models/User.model.js";
 
-// 🟢 Daily Summary Scheduler (Every morning at 9:00 AM)
-schedule.scheduleJob("0 9 * * *", async () => {
-  try {
-    await ScheduledWorker.sendDailySummary();
-  } catch (err) {
-    console.error("❌ Daily summary error:", err.message);
+// 🟢 Master Scheduler Initializer
+export const initScheduler = () => {
+  console.log("🚀 [SYSTEM] Initializing Master Sequential Scheduler...");
+
+  // 1. Run immediately on startup
+  console.log("🏃 [STARTUP] Triggering first Master Pass...");
+  runMasterPass();
+
+  // 2. Schedule the Master Pass (Every 2 minutes)
+  // We use 2 minutes to ensure a full sequence can finish safely on low RAM.
+  schedule.scheduleJob("*/2 * * * *", runMasterPass);
+
+  // 3. Daily Summary (9:00 AM)
+  schedule.scheduleJob("0 9 * * *", async () => {
+    try {
+      await ScheduledWorker.sendDailySummary();
+    } catch (err) {
+      console.error("❌ Daily summary error:", err.message);
+    }
+  });
+
+  // 4. Subscription & Trial Expiry (Every hour)
+  schedule.scheduleJob("0 * * * *", runExpiryCheck);
+
+  // 5. Heartbeat (Every 30 seconds)
+  setInterval(() => {
+    console.log("💓 [HEARTBEAT] Master Scheduler is breathing...");
+  }, 30000);
+
+  console.log("📅 Master Scheduler active.");
+};
+
+// --- Single Sequential Master Thread ---
+
+let masterRunning = false;
+async function runMasterPass() {
+  if (masterRunning) {
+    console.log("⏳ [SYSTEM] Master Pass skipped: Previous pass still running.");
+    return;
   }
-});
+  masterRunning = true;
+  console.log("🚀 [MASTER] Starting sequential pass for ALL regions...");
 
-// 🟢 Consolidated Keno Scraper Scheduler (Sequential to save RAM)
-let runningKeno = false;
-schedule.scheduleJob("*/1 * * * *", async () => {
-  if (runningKeno) return;
-  runningKeno = true;
-  console.log("🕐 Keno Sequential Job started at", new Date().toLocaleString());
+  const startTime = Date.now();
 
   try {
-    // NSW
-    try {
-      const nsw = await scrapeNSWKenobyGame();
-      console.log("✅ NSW Scraped:", nsw ? nsw.draw : "no new data");
-    } catch (e) { console.error("❌ NSW Job failed:", e.message); }
+    // Phase 1: KENO (One by one)
+    console.log("--- 🏁 KENO PHASE ---");
 
-    // VIC
     try {
-      const vic = await scrapeVICKenoByGame();
-      console.log("✅ VIC Scraped:", vic ? vic.draw : "no new data");
-    } catch (e) { console.error("❌ VIC Job failed:", e.message); }
+      const nswK = await scrapeNSWKenobyGame();
+      console.log("✅ NSW Keno:", nswK ? nswK.draw : "done");
+    } catch (e) { console.error("❌ NSW Keno failed:", e.message); }
 
-    // ACT
     try {
-      const act = await scrapeACTKenoByGame();
-      console.log("✅ ACT Scraped:", act ? act.draw : "no new data");
-    } catch (e) { console.error("❌ ACT Job failed:", e.message); }
+      const vicK = await scrapeVICKenoByGame();
+      console.log("✅ VIC Keno:", vicK ? vicK.draw : "done");
+    } catch (e) { console.error("❌ VIC Keno failed:", e.message); }
 
-    // SA
     try {
-      const sa = await scrapeSAKenoByGame();
-      console.log("✅ SA Scraped:", sa ? sa.draw : "no new data");
-    } catch (e) { console.error("❌ SA Job failed:", e.message); }
+      const actK = await scrapeACTKenoByGame();
+      console.log("✅ ACT Keno:", actK ? actK.draw : "done");
+    } catch (e) { console.error("❌ ACT Keno failed:", e.message); }
+
+    try {
+      const saK = await scrapeSAKenoByGame();
+      console.log("✅ SA Keno:", saK ? saK.draw : "done");
+    } catch (e) { console.error("❌ SA Keno failed:", e.message); }
+
+    // Phase 2: TRACKSIDE (One by one)
+    console.log("--- 🏁 TRACKSIDE PHASE ---");
+
+    try {
+      await scrapeNSWTrackside();
+      console.log("✅ NSW Trackside: success");
+    } catch (e) { console.error("❌ NSW Trackside failed:", e.message); }
+
+    try {
+      await scrapeVICTrackside();
+      console.log("✅ VIC Trackside: success");
+    } catch (e) { console.error("❌ VIC Trackside failed:", e.message); }
+
+    try {
+      await scrapeACTTrackside();
+      console.log("✅ ACT Trackside: success");
+    } catch (e) { console.error("❌ ACT Trackside failed:", e.message); }
 
   } catch (err) {
-    console.error("❌ Keno Macro Job error:", err.message);
+    console.error("❌ [MASTER] Critical failure in loop:", err.message);
   } finally {
-    runningKeno = false;
-    console.log("🏁 Keno Sequential Job finished.");
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    masterRunning = false;
+    console.log(`🏁 [MASTER] Pass finished in ${duration}s. System resting.`);
   }
-});
+}
 
-// 🟢 TrackSide Scheduler (every 5 minutes)
-let runningTrackSide = false;
-schedule.scheduleJob("*/5 * * * *", async () => {
-  if (runningTrackSide) return;
-  runningTrackSide = true;
-  console.log("🕐 TrackSide Job triggered at", new Date().toLocaleString());
-  try {
-    await scrapeNSWTrackside();
-    await scrapeVICTrackside();
-    await scrapeACTTrackside();
-    console.log("✅ TrackSide Scrapers finished");
-  } catch (err) {
-    console.error("❌ TrackSide error:", err.message);
-  }
-  runningTrackSide = false;
-});
-
-// 🟢 Subscription & Trial Expiry Scheduler (Every hour)
-schedule.scheduleJob("0 * * * *", async () => {
+// 🟢 Subscription & Trial Expiry logic
+async function runExpiryCheck() {
   console.log("🕐 Running Subscription Expiry Check...");
   const now = new Date();
   try {
@@ -96,4 +126,4 @@ schedule.scheduleJob("0 * * * *", async () => {
   } catch (err) {
     console.error("❌ Expiry job error:", err.message);
   }
-});
+}

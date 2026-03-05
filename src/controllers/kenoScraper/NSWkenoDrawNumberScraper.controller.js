@@ -63,10 +63,9 @@ const retry = async (fn, retries = 3, delay = 2000) => {
 // Kill any existing Chromium/Chrome processes
 const killZombieChromium = async () => {
   try {
+    // Shared Environment Fix: Only taskkill on Windows. pkill on Linux causes "Target closed" for other scrapers.
     if (process.platform === "win32") {
       await execAsync("taskkill /F /IM chrome.exe /T || taskkill /F /IM chromium.exe /T").catch(() => { });
-    } else {
-      await execAsync("pkill -f chromium || pkill -f chrome").catch(() => { });
     }
   } catch (_) { }
 };
@@ -356,14 +355,14 @@ export const scrapeNSWKenobyGame = async () => {
   };
 
   return await retry(async () => {
-    await killZombieChromium();
+    // Avoid global pkill here for Linux stability
     return await runScraperOnce();
   }, 2, 5000);
 };
 
 export const scrapeNSWKeno = scrapeNSWKenobyGame;
 
-// Fetch recent/filtered results (unchanged logic but kept for consistency)
+// Fetch recent/filtered results
 export const getKenoResults = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;

@@ -20,7 +20,14 @@ connectDB()
     initializeServices();
 
     import("./src/middleware/schedular.middleware.js")
-      .then(() => console.log("Scheduler loaded"))
+      .then((module) => {
+        if (module.initScheduler) {
+          module.initScheduler();
+          console.log("Scheduler initialized successfully");
+        } else {
+          console.log("Scheduler loaded (legacy mode)");
+        }
+      })
       .catch((e) => console.error("Failed loading scheduler:", e));
   })
   .catch((err) => {

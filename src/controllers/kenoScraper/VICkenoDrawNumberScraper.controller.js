@@ -60,10 +60,9 @@ const retry = async (fn, retries = 3, delay = 2000) => {
 
 const killZombieChromium = async () => {
   try {
+    // Only Window Cleanup. No pkill on Linux.
     if (process.platform === "win32") {
       await execAsync("taskkill /F /IM chrome.exe /T || taskkill /F /IM chromium.exe /T").catch(() => { });
-    } else {
-      await execAsync("pkill -f chromium || pkill -f chrome").catch(() => { });
     }
   } catch (_) { }
 };
@@ -269,7 +268,6 @@ export const scrapeVICKenoByGame = async () => {
   };
 
   return await retry(async () => {
-    await killZombieChromium();
     return await runScraperOnce();
   }, 2, 5000);
 };

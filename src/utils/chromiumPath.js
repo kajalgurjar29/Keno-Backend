@@ -15,8 +15,11 @@ export const getChromiumPath = () => {
 
   for (const p of candidates) {
     try {
+      // 🛡️ AWS Stability Fix: Validate path doesn't look like a Windows path on Linux
+      if (process.platform === "linux" && (p.includes("\\") || p.includes("C:"))) continue;
+
       if (fs.existsSync(p)) return p;
-    } catch {}
+    } catch { }
   }
 
   const bins = [
@@ -29,7 +32,7 @@ export const getChromiumPath = () => {
     try {
       const out = execSync(`which ${b}`, { encoding: "utf8" }).trim();
       if (out) return out;
-    } catch {}
+    } catch { }
   }
 
   return null;

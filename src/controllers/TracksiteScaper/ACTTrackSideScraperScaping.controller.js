@@ -23,16 +23,17 @@ puppeteer.use(stealth);
 // Kill any existing Chromium/Chrome processes
 const killZombieChromium = async () => {
   try {
+    // ONLY run on Windows. Continuous pkill on Linux causes "Target closed" for other scrapers.
     if (process.platform === "win32") {
       await execAsync(
         "taskkill /F /IM chrome.exe /T 2>nul & taskkill /F /IM chromium.exe /T 2>nul"
       );
-    } else {
-      await execAsync('pkill -f "chrome|chromium" || true');
+      console.log("🧹 ACT: Cleaned up zombie processes (Windows)");
     }
-    console.log("🧹 ACT: Cleaned up zombie processes");
   } catch (err) {
-    console.warn("⚠️ ACT: Could not kill processes:", err.message);
+    if (process.platform === "win32") {
+      console.warn("⚠️ ACT: Could not kill processes:", err.message);
+    }
   }
 };
 

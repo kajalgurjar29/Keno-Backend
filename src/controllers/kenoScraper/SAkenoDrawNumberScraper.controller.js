@@ -63,10 +63,9 @@ const retry = async (fn, retries = 3, delay = 2000) => {
 // Kill any existing Chromium/Chrome processes
 const killZombieChromium = async () => {
   try {
+    // Only Windows Cleanup. No pkill on Linux.
     if (process.platform === "win32") {
       await execAsync("taskkill /F /IM chrome.exe /T || taskkill /F /IM chromium.exe /T").catch(() => { });
-    } else {
-      await execAsync("pkill -f chromium || pkill -f chrome").catch(() => { });
     }
   } catch (_) { }
 };
@@ -355,7 +354,6 @@ export const scrapeSAKenoByGame = async () => {
   };
 
   return await retry(async () => {
-    await killZombieChromium();
     return await runScraperOnce();
   }, 2, 5000);
 };
