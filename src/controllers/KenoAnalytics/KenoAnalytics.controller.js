@@ -158,15 +158,26 @@ export const getTop10Keno = async (req, res) => {
             modelsToUse = [MODELS_MAP[location.toUpperCase()]];
         }
 
-        let allGames = [];
+        let allGamesRaw = [];
         for (const M of modelsToUse) {
-            // ONLY use valid draws with 20 numbers
             const games = await M.find({ numbers: { $size: 20 } }, { numbers: 1, createdAt: 1, date: 1, draw: 1 }).lean();
-            allGames = allGames.concat(games);
+            allGamesRaw = allGamesRaw.concat(games);
         }
 
-        // Sort using business order (date + draw) to avoid createdAt backfill skew.
-        allGames.sort(compareKenoGames);
+        const uniqueKenoMap = new Map();
+        allGamesRaw.forEach(g => {
+            const drawNumber = g.draw;
+            const gameDate = g.date || (g.createdAt ? new Date(g.createdAt).toLocaleDateString('en-AU').replace(/\//g, '-') : null);
+            if (!drawNumber || !gameDate) return;
+            const id = `${drawNumber}_${gameDate}`;
+            if (!uniqueKenoMap.has(id)) {
+                uniqueKenoMap.set(id, g);
+            } else if (g.createdAt > uniqueKenoMap.get(id).createdAt) {
+                uniqueKenoMap.set(id, g);
+            }
+        });
+
+        const allGames = Array.from(uniqueKenoMap.values()).sort(compareKenoGames);
         const totalGames = allGames.length;
 
         if (totalGames === 0) {
@@ -222,18 +233,29 @@ export const getTop10Keno24h = async (req, res) => {
             modelsToUse = [MODELS_MAP[location.toUpperCase()]];
         }
 
-        let allGames = [];
+        let allGamesRaw = [];
         for (const M of modelsToUse) {
-            // ONLY use valid draws with 20 numbers, limit each state to 360 to ensure we have enough for a combined window
             const games = await M.find({ numbers: { $size: 20 } }, { numbers: 1, createdAt: 1, date: 1, draw: 1 })
                 .sort({ createdAt: -1 })
-                .limit(360)
+                .limit(400) // Buffer for dupes
                 .lean();
-            allGames = allGames.concat(games);
+            allGamesRaw = allGamesRaw.concat(games);
         }
 
-        // Sort chronologically to process gaps correctly
-        allGames.sort(compareKenoGames);
+        const uniqueKenoMap = new Map();
+        allGamesRaw.forEach(g => {
+            const drawNumber = g.draw;
+            const gameDate = g.date || (g.createdAt ? new Date(g.createdAt).toLocaleDateString('en-AU').replace(/\//g, '-') : null);
+            if (!drawNumber || !gameDate) return;
+            const id = `${drawNumber}_${gameDate}`;
+            if (!uniqueKenoMap.has(id)) {
+                uniqueKenoMap.set(id, g);
+            } else if (g.createdAt > uniqueKenoMap.get(id).createdAt) {
+                uniqueKenoMap.set(id, g);
+            }
+        });
+
+        let allGames = Array.from(uniqueKenoMap.values()).sort(compareKenoGames);
 
         // Limit to exactly the last 360 valid games combined
         if (allGames.length > 360) {

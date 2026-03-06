@@ -459,14 +459,26 @@ export const getTracksideHorseEntryDetails = async (req, res) => {
             }
         }
 
-        let allRaces = [];
+        let allRacesRaw = [];
         for (const M of modelsToUse) {
             const races = await M.find({}, { runners: 1, numbers: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, gameName: 1, gameId: 1, location: 1 }).lean();
-            allRaces = allRaces.concat(races);
+            allRacesRaw = allRacesRaw.concat(races);
         }
 
-        // Sort by time (asc) to calculate droughts
-        allRaces.sort(compareTracksideRaces);
+        const uniqueRacesMap = new Map();
+        allRacesRaw.forEach(r => {
+            const rawDate = r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-AU').replace(/\//g, '-') : null);
+            const raceNo = r.gameNumber ?? r.drawNumber;
+            if (!raceNo || !rawDate) return;
+            const id = `${raceNo}_${rawDate}`;
+            if (!uniqueRacesMap.has(id)) {
+                uniqueRacesMap.set(id, r);
+            } else if (r.createdAt > uniqueRacesMap.get(id).createdAt) {
+                uniqueRacesMap.set(id, r);
+            }
+        });
+
+        const allRaces = Array.from(uniqueRacesMap.values()).sort(compareTracksideRaces);
         const totalGames = allRaces.length;
 
         let hits = [];
@@ -561,13 +573,13 @@ export const getTracksideDashboardStats = async (req, res) => {
         const { location = "NSW" } = req.query;
         const Model = location === "VIC" ? VIC : (location === "ACT" ? ACT : NSW);
 
-        // Fetch recent races for the table (last 10)
-        const recentRacesRaw = await Model.find()
+        // Fetch larger sample for stats (last 300 races buffered to extract unique 100)
+        const statsDataRaw = await Model.find()
             .sort({ createdAt: -1 })
-            .limit(10)
+            .limit(300)
             .lean();
 
-        if (!recentRacesRaw.length) {
+        if (!statsDataRaw.length) {
             return res.json({
                 success: true,
                 location,
@@ -587,37 +599,50 @@ export const getTracksideDashboardStats = async (req, res) => {
             return nums;
         };
 
-        const latestRaceData = recentRacesRaw[0];
-        const latestNums = formatResult(latestRaceData);
-
-        // Fetch larger sample for stats (last 100 races)
-        const statsData = await Model.find()
-            .sort({ createdAt: -1 })
-            .limit(100)
-            .lean();
-
         let oddWins = 0;
         let evenWins = 0;
+        let recentRaces = [];
+        const seenIds = new Set();
+        let validStatsCount = 0;
 
-        statsData.forEach(race => {
-            const winners = formatResult(race);
-            winners.forEach(num => {
-                if (num % 2 === 0) evenWins++;
-                else oddWins++;
-            });
-        });
+        for (const race of statsDataRaw) {
+            const dateStr = race.date || (race.createdAt ? new Date(race.createdAt).toLocaleDateString('en-AU').replace(/\//g, '-') : "");
+            const gameNo = race.gameNumber || race.drawNumber;
+            const uniqueId = `${gameNo}_${dateStr}`;
+
+            if (!seenIds.has(uniqueId) && gameNo) {
+                seenIds.add(uniqueId);
+
+                // Track for latest race array
+                if (recentRaces.length < 10) {
+                    recentRaces.push(race);
+                }
+
+                // Process odds/evens for max 100 unique games
+                if (validStatsCount < 100) {
+                    const winners = formatResult(race);
+                    winners.forEach(num => {
+                        if (num % 2 === 0) evenWins++;
+                        else oddWins++;
+                    });
+                    validStatsCount++;
+                }
+            }
+        }
 
         const totalWinners = oddWins + evenWins;
+        const latestRaceData = recentRaces[0] || {};
+        const latestNums = latestRaceData ? formatResult(latestRaceData) : [];
 
         res.json({
             success: true,
             location,
-            latestRace: {
+            latestRace: latestRaceData.gameNumber ? {
                 id: latestRaceData.gameNumber || latestRaceData.drawNumber,
                 date: latestRaceData.date || latestRaceData.createdAt,
                 numbers: latestNums,
-            },
-            recentRaces: recentRacesRaw.map(r => ({
+            } : null,
+            recentRaces: recentRaces.map(r => ({
                 id: r.gameNumber || r.drawNumber || r.gameName || r.gameId || "",
                 type: "Trackside",
                 time: r.date || r.createdAt,
@@ -648,30 +673,35 @@ export const getRecentTracksideResults = async (req, res) => {
         const { location = "NSW" } = req.query;
         const Model = location === "VIC" ? VIC : (location === "ACT" ? ACT : NSW);
 
-        const results = await Model.find()
+        const resultsRaw = await Model.find()
             .sort({ createdAt: -1 })
-            .limit(10)
+            .limit(50) // buffer
             .lean();
 
-        const formatResult = (r) => {
-            let nums = [];
-            if (r.numbers && r.numbers.length > 0) {
-                nums = r.numbers.slice(0, 4);
-            } else if (r.runners) {
-                nums = getRunnersByPosition(r.runners).map(run => run.horseNo).slice(0, 4);
+        const uniqueResults = [];
+        const seenIds = new Set();
+        for (const r of resultsRaw) {
+            const dateStr = r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-AU').replace(/\//g, '-') : "");
+            const gameNo = r.gameNumber || r.drawNumber;
+            const uniqueId = `${gameNo}_${dateStr}`;
+
+            if (!seenIds.has(uniqueId) && gameNo) {
+                seenIds.add(uniqueId);
+                uniqueResults.push({
+                    id: gameNo,
+                    type: "Trackside",
+                    time: r.createdAt || r.date,
+                    numbers: (r.numbers && r.numbers.length > 0) ? r.numbers.slice(0, 4) :
+                        (r.runners ? getRunnersByPosition(r.runners).map(run => run.horseNo).slice(0, 4) : [])
+                });
             }
-            return nums;
-        };
+            if (uniqueResults.length >= 10) break;
+        }
 
         res.json({
             success: true,
             location,
-            data: results.map(r => ({
-                id: r.gameNumber || r.drawNumber || r.gameName || r.gameId || "",
-                type: "Trackside",
-                time: r.date || r.createdAt,
-                numbers: formatResult(r)
-            }))
+            data: uniqueResults
         });
 
     } catch (error) {
