@@ -173,28 +173,35 @@ export const getTop10Exotics = async (req, res) => {
 
         const uniqueRacesMap = new Map();
         allRacesRaw.forEach(r => {
-            const id = r.gameId || `${r.gameNumber}_${r.date}`;
+            // Group by Game Number and Date to avoid duplicates from different ID formats
+            const rawDate = r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-AU').replace(/\//g, '-') : null);
+            const raceNo = r.gameNumber ?? r.drawNumber;
+
+            if (!raceNo || !rawDate) return;
+
+            const id = `${raceNo}_${rawDate}`;
             if (!uniqueRacesMap.has(id)) {
                 uniqueRacesMap.set(id, r);
             } else {
                 const existing = uniqueRacesMap.get(id);
-                // Prefer the one that has dividends or payouts
+                // Prefer records that have actual prize data (dividends or payouts)
                 const rHasData = (r.dividends && Object.values(r.dividends).some(v => v !== "")) || (r.payouts && Object.keys(r.payouts).length > 0);
                 const existingHasData = (existing.dividends && Object.values(existing.dividends).some(v => v !== "")) || (existing.payouts && Object.keys(existing.payouts).length > 0);
 
                 if (!existingHasData && rHasData) {
                     uniqueRacesMap.set(id, r);
-                } else {
-                    if (!existing.dividends && r.dividends) existing.dividends = r.dividends;
-                    if (!existing.payouts && r.payouts) existing.payouts = r.payouts;
+                } else if (r.createdAt > existing.createdAt) {
+                    // If both have data, prefer the one saved more recently
+                    uniqueRacesMap.set(id, r);
                 }
             }
         });
 
+        // Sort races strictly by Date and Game Number for precise drought calculation
         const allRaces = Array.from(uniqueRacesMap.values()).sort(compareTracksideRaces);
         const totalGames = allRaces.length;
 
-        console.log(`Analyzing ${totalGames} Trackside races for Analytics...`);
+        console.log(`Analyzing ${totalGames} Unique Trackside races...`);
 
         const stats = { Quinella: {}, Exacta: {}, Trifecta: {}, FirstFour: {} };
         const recent360Stats = { Quinella: {}, Exacta: {}, Trifecta: {}, FirstFour: {} };
@@ -203,15 +210,10 @@ export const getTop10Exotics = async (req, res) => {
         const threshold360 = Math.max(0, totalGames - 360);
         const threshold1000 = Math.max(0, totalGames - 1000);
 
-        // Date & Day Calculation Fix
-        const rawDates = allRaces.map(r => r.date).filter(Boolean);
-        const validDates = rawDates.filter(d => d !== "1970-01-01");
-        const uniqueDates = [...new Set(validDates)].sort();
-
-        const countInvalidDate = allRaces.filter(r => r.date === "1970-01-01" || !r.date).length;
-        const totalDaysEstimates = (countInvalidDate / 356.45);
-        const totalDays = Math.max(1, uniqueDates.length + Math.round(totalDaysEstimates));
-        const latestDate = uniqueDates.length > 0 ? (uniqueDates[uniqueDates.length - 1] || "2026-03-02") : "2026-03-02";
+        // Accurate latest date detection
+        const uniqueDates = [...new Set(allRaces.map(r => r.date).filter(Boolean))].sort();
+        const totalDays = Math.max(1, uniqueDates.length);
+        const latestDate = uniqueDates.length > 0 ? uniqueDates[uniqueDates.length - 1] : null;
 
         allRaces.forEach((race, index) => {
             let nums = race.numbers || [];
@@ -224,8 +226,8 @@ export const getTop10Exotics = async (req, res) => {
 
             const r1 = nums[0];
             const r2 = nums[1];
-            const raceDate = race.date || race.createdAt;
-            const isLatestDay = race.date === latestDate;
+            const raceDate = race.date || (race.createdAt ? new Date(race.createdAt).toLocaleDateString('en-AU').replace(/\//g, '-') : "");
+            const isLatestDay = (raceDate === latestDate);
 
             const processAllTypes = (targetMap) => {
                 const divs = race.dividends || {};
@@ -318,26 +320,25 @@ export const getTop10Exotics24h = async (req, res) => {
 
         const uniqueRacesMap = new Map();
         allRacesRaw.forEach(r => {
-            const id = r.gameId || `${r.gameNumber}_${r.date}`;
+            const rawDate = r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-AU').replace(/\//g, '-') : null);
+            const raceNo = r.gameNumber ?? r.drawNumber;
+            if (!raceNo || !rawDate) return;
+            const id = `${raceNo}_${rawDate}`;
             if (!uniqueRacesMap.has(id)) {
                 uniqueRacesMap.set(id, r);
             } else {
                 const existing = uniqueRacesMap.get(id);
-                // Prefer the one that has dividends or payouts
                 const rHasData = (r.dividends && Object.values(r.dividends).some(v => v !== "")) || (r.payouts && Object.keys(r.payouts).length > 0);
                 const existingHasData = (existing.dividends && Object.values(existing.dividends).some(v => v !== "")) || (existing.payouts && Object.keys(existing.payouts).length > 0);
-
                 if (!existingHasData && rHasData) {
                     uniqueRacesMap.set(id, r);
-                } else {
-                    if (!existing.dividends && r.dividends) existing.dividends = r.dividends;
-                    if (!existing.payouts && r.payouts) existing.payouts = r.payouts;
+                } else if (r.createdAt > existing.createdAt) {
+                    uniqueRacesMap.set(id, r);
                 }
             }
         });
 
-        let allRaces = Array.from(uniqueRacesMap.values());
-        allRaces.sort(compareTracksideRaces);
+        let allRaces = Array.from(uniqueRacesMap.values()).sort(compareTracksideRaces);
 
         // Keep the recent endpoint aligned to a fixed recent window of unique races.
         if (allRaces.length > 360) {
@@ -354,8 +355,8 @@ export const getTop10Exotics24h = async (req, res) => {
         const threshold1000 = Math.max(0, totalGames - 1000);
 
         const uniqueDates = [...new Set(allRaces.map(r => r.date).filter(Boolean))].sort();
-        const totalDays = uniqueDates.length || 1;
-        const latestDate = uniqueDates[uniqueDates.length - 1];
+        const totalDays = Math.max(1, uniqueDates.length);
+        const latestDate = uniqueDates.length > 0 ? uniqueDates[uniqueDates.length - 1] : null;
 
         allRaces.forEach((race, index) => {
             let nums = race.numbers || [];
@@ -368,8 +369,8 @@ export const getTop10Exotics24h = async (req, res) => {
 
             const r1 = nums[0];
             const r2 = nums[1];
-            const raceDate = race.date || race.createdAt;
-            const isLatestDay = race.date === latestDate;
+            const raceDate = race.date || (race.createdAt ? new Date(race.createdAt).toLocaleDateString('en-AU').replace(/\//g, '-') : "");
+            const isLatestDay = (raceDate === latestDate);
 
             const processAllTypes = (targetMap) => {
                 const divs = race.dividends || {};
