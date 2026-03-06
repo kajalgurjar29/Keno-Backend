@@ -255,7 +255,9 @@ export const scrapeTrackSideResults = async () => {
       let savedCount = 0;
       for (const result of results) {
         try {
-          const gameId = `${result.gameName}_${result.numbers.join("_")}`;
+          // Use local date instead of UTC to avoid the 5:30 AM flip
+          const localDate = new Date().toLocaleDateString('en-AU').replace(/\//g, '-');
+          const gameId = `${result.gameName}_${localDate}_${result.numbers.join("_")}`;
           const filter = { gameId, location };
           const update = {
             gameId,
@@ -265,9 +267,9 @@ export const scrapeTrackSideResults = async () => {
             runners: result.runners,
             dividends: result.dividends,
             location,
-            date: new Date().toISOString().split("T")[0],
+            date: localDate,
             timestamp: new Date(),
-            scraperVersion: "2.1",
+            scraperVersion: "2.2",
           };
 
           const savedDoc = await TrackSideResult.findOneAndUpdate(
