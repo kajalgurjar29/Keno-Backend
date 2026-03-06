@@ -43,21 +43,27 @@ export const stripeWebhook = async (req, res) => {
   }
 
   try {
+    console.log("📦 Webhook Body Type:", typeof req.body, "IsBuffer:", Buffer.isBuffer(req.body));
+
     // 🧪 MOCK MODE FOR POSTMAN TESTING
     if (sig === "mock") {
       console.log("⚠️ DEBUG: Using MOCK event (Signature verification skipped)");
       // If req.body is a buffer (because of express.raw), parse it
       event = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
     } else {
+      // Ensure req.body is a buffer for constructEvent
+      const payload = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
+
       event = stripe.webhooks.constructEvent(
-        req.body,
+        payload,
         sig,
         process.env.STRIPE_WEBHOOK_SECRET
       );
     }
-    console.log("✅ Stripe Event Verified:", event.type);
+    console.log("✅ Stripe Event Verified:", event.type, "ID:", event.id);
   } catch (err) {
     console.error("❌ Webhook Error:", err.message);
+    console.error("Signature received:", sig ? "YES" : "NO");
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
@@ -110,14 +116,9 @@ export const stripeWebhook = async (req, res) => {
           }, { new: true });
 
           if (updatedUser) {
-            console.log("✅ USER UNLOCKED SUCCESSFULLY:", {
-              userId: updatedUser._id,
-              isSubscriptionActive: updatedUser.isSubscriptionActive,
-              planType: updatedUser.planType,
-              subscriptionEnd: updatedUser.subscriptionEnd
-            });
+            console.log("✅ USER UNLOCKED SUCCESSFULLY:", updatedUser.email);
           } else {
-            console.error("❌ User not found during webhook update:", userId);
+            console.error("❌ User not found with ID:", userId);
           }
         } catch (updateError) {
           console.error("❌ Error updating user in webhook:", updateError);
