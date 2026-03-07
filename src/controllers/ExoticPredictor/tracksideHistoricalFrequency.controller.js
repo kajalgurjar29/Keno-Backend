@@ -361,7 +361,9 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
                         result: race.nums,
                         dividend: displayDiv,
                         droughtAtHit: hIdx > 0 ? (idx - hits[hIdx - 1] - 1) : idx,
-                        location: race.location
+                        location: race.location,
+                        flexiPercentage: "100%",
+                        flexiPercent: "100%"
                     };
                 })
             };
