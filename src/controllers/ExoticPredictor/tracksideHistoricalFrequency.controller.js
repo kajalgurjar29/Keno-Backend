@@ -104,7 +104,7 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
 
         for (const M of modelsToFetch) {
             // No limit - get full history for dynamic analysis
-            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, gameId: 1, gameName: 1, dividends: 1, location: 1 }).lean();
+            const races = await M.find({}, { numbers: 1, runners: 1, createdAt: 1, date: 1, gameNumber: 1, drawNumber: 1, gameId: 1, gameName: 1, dividends: 1, payouts: 1, location: 1 }).lean();
             allRacesRaw = allRacesRaw.concat(races);
         }
 
@@ -117,20 +117,14 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
             } else {
                 const existing = uniqueRacesMap.get(id);
                 if (!existing.dividends && r.dividends) existing.dividends = r.dividends;
+                if (!existing.payouts && r.payouts) existing.payouts = r.payouts;
             }
         });
 
-        const allRaces = Array.from(uniqueRacesMap.values()).sort(compareTracksideRaces);
+        const allRacesSorted = Array.from(uniqueRacesMap.values()).sort(compareTracksideRaces);
 
-        // Dynamic Filtering: Support for "Recent" view
-        if (recentCount && !isNaN(parseInt(recentCount))) {
-            allRaces = allRaces.slice(-parseInt(recentCount));
-        }
-
-        const totalGames = allRaces.length;
-
-        // Process races
-        const processed = allRaces.map((r, idx) => {
+        // Process ALL races for global stats BEFORE slicing
+        const processedFull = allRacesSorted.map((r, idx) => {
             let nums = r.numbers || [];
             if (nums.length < 4 && r.runners && r.runners.length > 0) {
                 nums = getRunnersByPosition(r.runners).map(run => run.horseNo);
@@ -141,9 +135,47 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
                 date: r.date || r.createdAt,
                 nums: nums.slice(0, 4),
                 dividends: r.dividends || {},
-                location: r.location
+                payouts: r.payouts || {},
+                location: r.location,
+                hasDividendData: Object.values(r.payouts || {}).some(v => v > 0) || Object.values(r.dividends || {}).some(v => v !== "" && v !== "$0.00")
             };
         });
+
+        // Calculate Global Fallback Average Dividends for the whole database
+        const globalBetTypeStats = {
+            quinella: { sum: 0, count: 0 },
+            exacta: { sum: 0, count: 0 },
+            trifecta: { sum: 0, count: 0 },
+            first4: { sum: 0, count: 0 }
+        };
+
+        processedFull.forEach(race => {
+            ["quinella", "exacta", "trifecta", "first4"].forEach(type => {
+                let val = 0;
+                if (race.payouts && race.payouts[type] && !isNaN(parseFloat(race.payouts[type]))) {
+                    val = parseFloat(race.payouts[type]);
+                } else if (race.dividends && race.dividends[type]) {
+                    const cleanVal = String(race.dividends[type]).replace(/[^\d.]/g, "");
+                    val = parseFloat(cleanVal);
+                }
+                if (val > 0) {
+                    globalBetTypeStats[type].sum += val;
+                    globalBetTypeStats[type].count++;
+                }
+            });
+        });
+
+        const globalFallbacks = {};
+        Object.entries(globalBetTypeStats).forEach(([type, stats]) => {
+            globalFallbacks[type] = stats.count > 0 ? (stats.sum / stats.count) : 0;
+        });
+
+        // Now handle the "Recent" slice if requested for the visible output
+        let processed = [...processedFull];
+        if (recentCount && !isNaN(parseInt(recentCount))) {
+            processed = processedFull.slice(-parseInt(recentCount));
+        }
+        const totalGames = processed.length;
 
         const getCombos = (type) => {
             if (type === "Quinella") {
@@ -172,13 +204,26 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
         const results = {};
         const anyHitIndices = new Set();
 
+        // Count total games in the window that have dividend data
+        const totalGamesWithDivs = processed.filter(r => r.hasDividendData).length;
+        // Also know how many in FULL history have divs (for fallback average)
+        const totalFullGamesWithDivs = processedFull.filter(r => r.hasDividendData).length;
+
         types.forEach(type => {
-            const hits = [];
-            let totalDivValue = 0;
-            let divCount = 0;
+            const hits = []; // indices relative to 'processed' array
+            const fullHistoryHitsIndices = []; // indices relative to 'processedFull' array
+
+            let totalDivValue = 0; // Value from hits in the window
+            let divCount = 0; // Count of hits with divs in the window
+
+            let fullHistoryDivValue = 0; // Value from hits in the FULL history
+            let fullHistoryDivCount = 0; // Count of hits with divs in the FULL history
+
             const stateBreakdown = { NSW: 0, VIC: 0, ACT: 0 };
 
-            processed.forEach(race => {
+            // Pass 1: Scan FULL History for robust average dividend for THIS combination
+            const divKey = type.toLowerCase();
+            processedFull.forEach(race => {
                 const n = race.nums;
                 if (n.length < 2) return;
                 let isHit = false;
@@ -194,23 +239,47 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
                 }
 
                 if (isHit) {
-                    hits.push(race.idx);
-                    anyHitIndices.add(race.idx);
+                    fullHistoryHitsIndices.push(race.idx);
+                    let val = 0;
+                    if (race.payouts && race.payouts[divKey] && !isNaN(parseFloat(race.payouts[divKey]))) {
+                        val = parseFloat(race.payouts[divKey]);
+                    } else if (race.dividends && race.dividends[divKey]) {
+                        const cleanVal = String(race.dividends[divKey]).replace(/[^\d.]/g, "");
+                        val = parseFloat(cleanVal);
+                    }
 
-                    // Dividend Tracking
-                    const divKey = type.toLowerCase();
-                    const divStr = race.dividends ? race.dividends[divKey] : null;
-                    if (divStr) {
-                        const cleanVal = String(divStr).replace(/[^\d.]/g, "");
-                        const val = parseFloat(cleanVal);
-                        if (!isNaN(val) && val > 0) {
+                    if (val > 0) {
+                        fullHistoryDivValue += val;
+                        fullHistoryDivCount++;
+                    }
+                }
+            });
+
+            // Pass 2: Filter for the visible window
+            const windowMinIdx = processed[0].idx;
+            const windowMaxIdx = processed[processed.length - 1].idx;
+
+            fullHistoryHitsIndices.forEach(idx => {
+                if (idx >= windowMinIdx && idx <= windowMaxIdx) {
+                    const raceIdxInProcessed = processed.findIndex(r => r.idx === idx);
+                    if (raceIdxInProcessed !== -1) {
+                        hits.push(raceIdxInProcessed);
+                        anyHitIndices.add(raceIdxInProcessed);
+
+                        const race = processed[raceIdxInProcessed];
+                        let val = 0;
+                        if (race.payouts && race.payouts[divKey] && !isNaN(parseFloat(race.payouts[divKey]))) {
+                            val = parseFloat(race.payouts[divKey]);
+                        } else if (race.dividends && race.dividends[divKey]) {
+                            const cleanVal = String(race.dividends[divKey]).replace(/[^\d.]/g, "");
+                            val = parseFloat(cleanVal);
+                        }
+                        if (val > 0) {
                             totalDivValue += val;
                             divCount++;
                         }
+                        if (race.location) stateBreakdown[race.location]++;
                     }
-
-                    // State Tracking
-                    if (race.location) stateBreakdown[race.location]++;
                 }
             });
 
@@ -228,11 +297,30 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
 
             const comboType = type === "First4" ? "FirstFour" : type;
             const combos = getCombos(comboType);
-            const avgDiv = divCount > 0 ? (totalDivValue / divCount) : 0;
+
+            // Dynamic average for THIS specific combination from full history
+            let avgDiv = fullHistoryDivCount > 0 ? (fullHistoryDivValue / fullHistoryDivCount) : 0;
+            // If this combo has NEVER hit with a dividend, use the global fallback for the bet type
+            if (avgDiv === 0) avgDiv = globalFallbacks[divKey] || 0;
 
             const winProbability = totalGames > 0
                 ? ((count / totalGames) * 100).toFixed(2) + "%"
                 : "0.00%";
+
+            // IMPORTANT: For Profit and ROI, only use games that actually have dividend data
+            // This avoids skewing ROI negatively when recent dividends are missing from scraper.
+            const totalInvestment = combos * totalGamesWithDivs;
+            const netProfit = totalDivValue - totalInvestment;
+            const roiPercent = totalInvestment > 0 ? ((totalDivValue / totalInvestment) * 100).toFixed(2) + "%" : "0.00%";
+
+            // PROJECTED: Estimate missing dividends using the robust avgDiv calculated above
+            const hitsWithNoDivs = hits.filter(hIdx => !processed[hIdx].hasDividendData).length;
+            const projectedReturn = totalDivValue + (hitsWithNoDivs * avgDiv);
+            const projectedInvestment = combos * totalGames;
+            const projectedNetProfit = projectedReturn - projectedInvestment;
+            const projectedROI = projectedInvestment > 0 ? ((projectedReturn / projectedInvestment) * 100).toFixed(2) + "%" : "0.00%";
+
+
 
             results[type] = {
                 hits: count,
@@ -243,7 +331,13 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
                 currentDrought: currDrought,
                 longestDrought: longestDrought,
                 combos,
-                flexiPercent: combos > 0 ? ((1 / combos) * 100).toFixed(2) + "%" : "0.00%",
+                totalInvestment: "$" + totalInvestment.toFixed(2),
+                totalReturn: "$" + totalDivValue.toFixed(2),
+                netProfit: "$" + netProfit.toFixed(1),
+                roiPercent,
+                projectedReturn: "$" + projectedReturn.toFixed(2),
+                projectedNetProfit: "$" + projectedNetProfit.toFixed(2),
+                projectedROI: projectedROI,
                 avgDiv: "$" + avgDiv.toFixed(2),
                 potentialROI: avgDiv > 0 && combos > 0 ? ((avgDiv / combos).toFixed(2) + "x") : "N/A",
                 stateBreakdown,
@@ -251,11 +345,21 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
                     const race = processed[idx];
                     const hIdx = hits.indexOf(idx);
                     const divKey = type.toLowerCase();
+
+                    let displayDiv = "$0.00";
+                    if (race.payouts && race.payouts[divKey] && race.payouts[divKey] > 0) {
+                        displayDiv = "$" + parseFloat(race.payouts[divKey]).toFixed(2);
+                    } else if (race.dividends && race.dividends[divKey] && race.dividends[divKey] !== "$0.00" && race.dividends[divKey] !== "") {
+                        displayDiv = race.dividends[divKey];
+                    } else {
+                        displayDiv = "$" + avgDiv.toFixed(2);
+                    }
+
                     return {
                         raceNumber: race.raceNo,
                         date: race.date,
                         result: race.nums,
-                        dividend: race.dividends ? (race.dividends[divKey] || "$0.00") : "$0.00",
+                        dividend: displayDiv,
                         droughtAtHit: hIdx > 0 ? (idx - hits[hIdx - 1] - 1) : idx,
                         location: race.location
                     };
@@ -287,12 +391,37 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
             }
         }
 
+        // Summary Totals across all active types
+        let totalReturnAll = 0;
+        let totalInvestmentAll = 0;
+        let projectedReturnAll = 0;
+        let totalInvestmentFullAll = 0;
+
+        Object.values(results).forEach(r => {
+            totalReturnAll += parseFloat(r.totalReturn.replace(/[^0-9.]/g, '')) || 0;
+            totalInvestmentAll += parseFloat(r.totalInvestment.replace(/[^0-9.]/g, '')) || 0;
+            projectedReturnAll += parseFloat(r.projectedReturn.replace(/[^0-9.]/g, '')) || 0;
+            totalInvestmentFullAll += parseFloat(r.combos) * totalGames;
+        });
+        const netProfitAll = totalReturnAll - totalInvestmentAll;
+        const roiPercentAll = totalInvestmentAll > 0 ? ((totalReturnAll / totalInvestmentAll) * 100).toFixed(2) + "%" : "0.00%";
+
+        const projectedProfitAll = projectedReturnAll - totalInvestmentFullAll;
+        const projectedROIAll = totalInvestmentFullAll > 0 ? ((projectedReturnAll / totalInvestmentFullAll) * 100).toFixed(2) + "%" : "0.00%";
+
         return res.json({
             success: true,
             analyticsMode: recentCount ? `Recent ${recentCount} Games` : "Full Historical",
             summary: {
                 totalGamesProcessed: totalGames,
                 combinedHits: combinedHits.length,
+                totalInvestment: "$" + totalInvestmentAll.toFixed(2),
+                totalReturn: "$" + totalReturnAll.toFixed(2),
+                netProfit: "$" + netProfitAll.toFixed(2),
+                overallROI: roiPercentAll,
+                projectedTotalReturn: "$" + projectedReturnAll.toFixed(2),
+                projectedNetProfit: "$" + projectedProfitAll.toFixed(2),
+                projectedROI: projectedROIAll,
                 overallHitFrequency: `1 in ${combinedAvg} races`,
                 overallHitRate: `1 in ${combinedAvg} races`,
                 hitsLast1000: `1 in ${combinedAvg1000} races`,
@@ -301,7 +430,7 @@ export const analyzeTracksideHistoricalFrequency = async (req, res) => {
                 averageGames: combinedAvg,
                 overallAvg: combinedAvg,
                 bestPerformingState: bestState,
-                formattedSummary: `Across ${totalGames.toLocaleString()} races, your exotic strategy hit ${combinedHits.length.toLocaleString()} times. This is a dynamic hit rate of 1 in every ${combinedAvg} races. Best performance observed in ${bestState}.`
+                formattedSummary: `Across ${totalGames.toLocaleString()} races, your exotic strategy hit ${combinedHits.length.toLocaleString()} times. Total Actual Profit: $${netProfitAll.toFixed(2)} (${roiPercentAll} ROI). Projected Profit (including pending dividends): $${projectedProfitAll.toFixed(2)} (${projectedROIAll} ROI).`
             },
             data: results
         });
