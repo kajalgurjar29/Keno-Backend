@@ -11,6 +11,6 @@ const router = express.Router();
 router.get("/user/:id", verifyAPIKey, getUserData);
 router.put("/user/update/:id", verifyAPIKey, updateUserData);
 router.get("/users", verifyAPIKey, getAllUsers);
-router.patch("/status/:id", verifyAPIKey, changeUserStatus);
+router.put("/status/:id", verifyAPIKey, changeUserStatus);
 
 export default router;
