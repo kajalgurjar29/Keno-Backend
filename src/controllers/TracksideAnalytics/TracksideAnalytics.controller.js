@@ -549,6 +549,26 @@ export const getTracksideHorseEntryDetails = async (req, res) => {
             };
         });
 
+        const totalWins = hits.filter(h => h.position === 1).length;
+        const totalPlaces = hits.filter(h => h.position !== 1).length;
+
+        // Analytics for "Today" (Latest Day)
+        const uniqueDates = [...new Set(allRaces.map(r => r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-AU').replace(/\//g, '-') : null)).filter(Boolean))].sort();
+        const latestDate = uniqueDates.length > 0 ? uniqueDates[uniqueDates.length - 1] : null;
+
+        const totalGamesToday = allRaces.filter(r => {
+            const rd = r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-AU').replace(/\//g, '-') : "");
+            return rd === latestDate;
+        }).length;
+
+        const hits24h = hits.filter(h => {
+            const r = allRaces[h.index];
+            const rd = r.date || (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-AU').replace(/\//g, '-') : "");
+            return rd === latestDate;
+        }).length;
+
+        const winPercentage = totalGames > 0 ? ((hits.length / totalGames) * 100).toFixed(2) : "0.00";
+
         res.json({
             success: true,
             data: {
@@ -558,7 +578,7 @@ export const getTracksideHorseEntryDetails = async (req, res) => {
                 longestDrought,
                 last5Results: last5WithDroughts,
                 totalHits: hits.length,
-                totalGames
+                totalGames: allRacesRaw.length
             }
         });
 
