@@ -11,7 +11,7 @@ class ActivityWorker {
         eventBus.on(EVENTS.USER_REGISTERED, async ({ user }) => {
             await NotificationService.notifyUser({
                 userId: user._id,
-                title: "Welcome to Punt Mate! 🏇",
+                title: "Welcome to Punt data! 🏇",
                 body: `Hello ${user.fullName}, thank you for joining our platform. Good luck with your punting!`,
                 category: "activity",
                 priority: "medium"

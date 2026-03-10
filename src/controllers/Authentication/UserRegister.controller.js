@@ -70,7 +70,7 @@ export const registerUser = async (req, res) => {
     });
 
     // 5. Send OTP email
-    const subject = "Welcome to Punt Mate - Your OTP Code";
+    const subject = "Welcome to Punt Data - Your OTP Code";
     const textMessage = `Hello ${fullName}, Your OTP code is: ${otp}. This code will expire in 10 minutes.`;
     const htmlMessage = `
       <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 12px; background-color: #ffffff;">
@@ -79,15 +79,15 @@ export const registerUser = async (req, res) => {
         </div>
         <div style="padding: 20px; background-color: #f8f9fa; border-radius: 8px; text-align: center;">
           <p style="font-size: 16px; color: #444; margin-top: 0;">Hello <strong>${fullName}</strong>,</p>
-          <p style="font-size: 16px; color: #444;">Thank you for joining Punt Mate! Use the code below to verify your email address:</p>
+          <p style="font-size: 16px; color: #444;">Thank you for joining Punt Data! Use the code below to verify your email address:</p>
           <div style="margin: 30px 0;">
             <span style="font-size: 36px; font-weight: 700; color: #0066ff; letter-spacing: 5px; background: #fff; padding: 10px 25px; border-radius: 8px; border: 2px dashed #0066ff;">${otp}</span>
           </div>
           <p style="font-size: 14px; color: #888;">This code will expire in <strong>10 minutes</strong>.</p>
         </div>
         <div style="margin-top: 30px; text-align: center; border-top: 1px solid #eee; padding-top: 20px;">
-          <p style="font-size: 12px; color: #aaa;">If you didn't create an account with Punt Mate, you can safely ignore this email.</p>
-          <p style="font-size: 12px; color: #aaa;">&copy; 2026 Punt Mate. All rights reserved.</p>
+          <p style="font-size: 12px; color: #aaa;">If you didn't create an account with Punt data, you can safely ignore this email.</p>
+          <p style="font-size: 12px; color: #aaa;">&copy; 2026 Punt Data. All rights reserved.</p>
         </div>
       </div>
     `;

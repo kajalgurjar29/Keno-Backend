@@ -32,7 +32,7 @@ export const requestPasswordReset = async (req, res) => {
     await OtpToken.create({ userId: user._id, otp, expiry });
 
     // 4. Send email with OTP
-    const subject = "Password Reset Request - Punt Mate";
+    const subject = "Password Reset Request - Punt data";
     const textMessage = `Hello ${user.fullName}, You requested a password reset. Your OTP is: ${otp}. This will expire in 10 minutes.`;
     const htmlMessage = `
       <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 12px; background-color: #ffffff;">
@@ -48,7 +48,7 @@ export const requestPasswordReset = async (req, res) => {
           <p style="font-size: 14px; color: #888;">This code will expire in <strong>10 minutes</strong>. If you didn't request this, please secure your account.</p>
         </div>
         <div style="margin-top: 30px; text-align: center; border-top: 1px solid #eee; padding-top: 20px;">
-          <p style="font-size: 12px; color: #aaa;">&copy; 2026 Punt Mate. All rights reserved.</p>
+          <p style="font-size: 12px; color: #aaa;">&copy; 2026 Punt data. All rights reserved.</p>
         </div>
       </div>
     `;
@@ -143,7 +143,7 @@ export const requestPinReset = async (req, res) => {
 
     await OtpToken.create({ userId: user._id, otp, expiry });
 
-    const subject = "PIN Reset Request - Punt Mate";
+    const subject = "PIN Reset Request - Punt Data";
     const textMessage = `Hello ${user.fullName}, Your OTP for PIN reset is: ${otp}. This will expire in 10 minutes.`;
     const htmlMessage = `
       <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 12px; background-color: #ffffff;">
@@ -159,7 +159,7 @@ export const requestPinReset = async (req, res) => {
           <p style="font-size: 14px; color: #888;">This code will expire in <strong>10 minutes</strong>.</p>
         </div>
         <div style="margin-top: 30px; text-align: center; border-top: 1px solid #eee; padding-top: 20px;">
-          <p style="font-size: 12px; color: #aaa;">&copy; 2026 Punt Mate. All rights reserved.</p>
+          <p style="font-size: 12px; color: #aaa;">&copy; 2026 Punt Data. All rights reserved.</p>
         </div>
       </div>
     `;
