@@ -13,7 +13,7 @@ class NotificationService {
      * Send a notification to a specific user
      * @param {Object} params - { userId, title, body, category, priority, metadata }
      */
-    static async notifyUser({ userId, title, body, category = "activity", priority = "medium", metadata = {} }) {
+    static async notifyUser({ userId, title, body, html, category = "activity", priority = "medium", metadata = {} }) {
         try {
             console.log(`🔔 Notification Processing: [${category.toUpperCase()}] for User: ${userId}`);
             const user = await User.findById(userId);
@@ -89,8 +89,9 @@ class NotificationService {
             // 3. Email Notification
             if (preferences.email && user.email) {
                 try {
-                    const subject = `[Punt Mate] ${title}`;
-                    await sendEmail(user.email, subject, body, `<h1>${title}</h1><p>${body}</p>`);
+                    const subject = `[Punt Data] ${title}`;
+                    const htmlContent = html || `<h1>${title}</h1><p>${body}</p>`;
+                    await sendEmail(user.email, subject, body, htmlContent);
                     console.log(`📧 Email Notification sent to: ${user.email}`);
                 } catch (emailError) {
                     console.error(`❌ Email Error for user ${userId}:`, emailError.message);

@@ -75,7 +75,7 @@ export const registerUser = async (req, res) => {
     const htmlMessage = `
       <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 12px; background-color: #ffffff;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #1a1a1a; margin: 0; font-size: 28px; letter-spacing: -0.5px;">Punt <span style="color: #0066ff;">Mate</span></h1>
+          <h1 style="color: #1a1a1a; margin: 0; font-size: 28px; letter-spacing: -0.5px;">Punt <span style="color: #0066ff;">Data</span></h1>
         </div>
         <div style="padding: 20px; background-color: #f8f9fa; border-radius: 8px; text-align: center;">
           <p style="font-size: 16px; color: #444; margin-top: 0;">Hello <strong>${fullName}</strong>,</p>

@@ -1,5 +1,6 @@
 import eventBus, { EVENTS } from "../utils/eventBus.js";
 import NotificationService from "./NotificationService.js";
+import { getWelcomeEmailTemplate } from "../utils/welcomeEmailTemplate.js";
 
 /**
  * Activity Worker
@@ -9,10 +10,13 @@ class ActivityWorker {
     static init() {
         // 1. User Registration
         eventBus.on(EVENTS.USER_REGISTERED, async ({ user }) => {
+            const welcomeHtml = getWelcomeEmailTemplate(user.fullName);
+
             await NotificationService.notifyUser({
                 userId: user._id,
-                title: "Welcome to Punt data! 🏇",
-                body: `Hello ${user.fullName}, thank you for joining our platform. Good luck with your punting!`,
+                title: "Welcome to Punt Data! 🏇",
+                body: `Hello ${user.fullName}, welcome to Punt Data. Smarter decisions through better data.`,
+                html: welcomeHtml,
                 category: "activity",
                 priority: "medium"
             });
