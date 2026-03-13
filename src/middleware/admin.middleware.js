@@ -1,3 +1,7 @@
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+
 const isAdmin = (req, res, next) => {
   try {
     // user auth.middleware se aata hai
