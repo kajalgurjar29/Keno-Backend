@@ -75,13 +75,18 @@ export const stripeWebhook = async (req, res) => {
 
     if (session.mode === "subscription") {
       let subscription;
-      if (sig === "mock") {
-        // 🧪 Mock subscription data for testing
-        subscription = {
-          current_period_end: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // +30 days
-        };
-      } else {
-        subscription = await stripe.subscriptions.retrieve(session.subscription);
+      try {
+        if (sig === "mock") {
+          // 🧪 Mock subscription data for testing
+          subscription = {
+            current_period_end: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // +30 days
+          };
+        } else {
+          subscription = await stripe.subscriptions.retrieve(session.subscription);
+        }
+      } catch (retrieveError) {
+        console.error("❌ Error retrieving subscription from Stripe:", retrieveError.message);
+        return res.status(500).json({ error: "Failed to retrieve subscription details" });
       }
 
       // ✅ Update Payment
@@ -98,11 +103,18 @@ export const stripeWebhook = async (req, res) => {
         { new: true }
       );
 
+      if (payment) {
+        console.log("✅ Payment record updated for session:", session.id);
+      } else {
+        console.warn("⚠️ No internal Payment record found for session:", session.id);
+      }
+
       // ✅ UPDATE USER STATUS (CORE CONCEPT)
       const userId = session.metadata?.userId;
       const plan = session.metadata?.plan || "monthly";
+
       if (userId) {
-        console.log(`🔄 Updating User ${userId} Subscription Status...`);
+        console.log(`🔄 Updating User ${userId} Subscription Status to ${plan}...`);
 
         try {
           const updatedUser = await User.findByIdAndUpdate(userId, {
@@ -117,12 +129,19 @@ export const stripeWebhook = async (req, res) => {
 
           if (updatedUser) {
             console.log("✅ USER UNLOCKED SUCCESSFULLY:", updatedUser.email);
+            console.log("📊 New Status:", {
+              planType: updatedUser.planType,
+              active: updatedUser.isSubscriptionActive,
+              end: updatedUser.subscriptionEnd
+            });
           } else {
             console.error("❌ User not found with ID:", userId);
           }
         } catch (updateError) {
           console.error("❌ Error updating user in webhook:", updateError);
         }
+      } else {
+        console.error("❌ No userId found in session metadata");
       }
     }
   }
@@ -132,37 +151,65 @@ export const stripeWebhook = async (req, res) => {
      =============================== */
   if (event.type === "invoice.payment_succeeded") {
     const invoice = event.data.object;
-    console.log("🔥 STRIPE WEBHOOK HIT:", event.type);
+    console.log("🔥 STRIPE WEBHOOK HIT: invoice.payment_succeeded");
 
     if (invoice.subscription) {
       let subscription;
-      if (sig === "mock") {
-        subscription = {
-          current_period_end: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
-        };
-      } else {
-        subscription = await stripe.subscriptions.retrieve(invoice.subscription);
+      try {
+        if (sig === "mock") {
+          subscription = {
+            current_period_end: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+          };
+        } else {
+          subscription = await stripe.subscriptions.retrieve(invoice.subscription);
+        }
+      } catch (retrieveError) {
+        console.error("❌ Error retrieving subscription for invoice:", retrieveError.message);
+        // Continue anyway as we have basic invoice info
       }
 
+      // Attempt to find payment record
+      // NOTE: For the first payment, checkout.session.completed might not have run yet,
+      // so we might not find it by stripeSubscriptionId if it hasn't been set.
       const payment = await Payment.findOneAndUpdate(
         { stripeSubscriptionId: invoice.subscription },
         {
           status: "active",
-          currentPeriodEnd: new Date(
-            subscription.current_period_end * 1000
-          ),
+          currentPeriodEnd: subscription ? new Date(subscription.current_period_end * 1000) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
         { new: true }
       );
 
-      // ✅ UPDATE USER STATUS (CORE CONCEPT)
-      if (payment?.userId) {
-        await User.findByIdAndUpdate(payment.userId, {
+      // ✅ UPDATE USER STATUS
+      // We look for userId in payment, but if it's the first payment and payment isn't updated yet,
+      // we might need to rely on the metadata in the invoice if available.
+      let userId = payment?.userId;
+
+      // Stripe often copies metadata from subscription to invoice
+      if (!userId && invoice.metadata?.userId) {
+        userId = invoice.metadata.userId;
+      }
+
+      if (userId) {
+        console.log(`🔄 Renewing/Activating User ${userId} via invoice...`);
+        const updateData = {
           isSubscriptionActive: true,
           isSubscribed: true,
-          subscriptionEnd: new Date(subscription.current_period_end * 1000),
-        });
-        console.log("✅ SUBSCRIPTION RENEWED FOR USER:", payment.userId);
+          subscriptionEnd: subscription ? new Date(subscription.current_period_end * 1000) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        };
+
+        // IMPORTANT: Ensure planType is updated to monthly if it was trial
+        // We can't be sure of the plan from invoice alone without complex checks, 
+        // but it's safe to assume 'monthly' as a default if it's currently 'trial'
+        const user = await User.findById(userId);
+        if (user && user.planType === 'trial') {
+          updateData.planType = 'monthly';
+        }
+
+        await User.findByIdAndUpdate(userId, updateData);
+        console.log("✅ SUBSCRIPTION UPDATED FOR USER:", userId);
+      } else {
+        console.warn("⚠️ Could not find userId to update for invoice:", invoice.id);
       }
     }
   }
