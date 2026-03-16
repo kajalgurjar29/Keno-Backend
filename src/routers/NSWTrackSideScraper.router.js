@@ -6,6 +6,7 @@ import {
   getFilteredTrackSideResults,
   getPaginatedTrackSideResultsOnly,
   getFilteredTrackSideResultsOnly,
+  getFilteredTrackSideResultsOnlyminmax,
 } from "../controllers/TracksiteScaper/NSWTrackSideScraperScaping.controller.js";
 import verifyAPIKey from "../middleware/verifyAPIKey.js";
 
@@ -62,6 +63,15 @@ router.get("/paginated-results-only/NSW", verifyAPIKey, async (req, res) => {
 router.get("/filtered-results-only/NSW", verifyAPIKey, async (req, res) => {
   try {
     const results = await getFilteredTrackSideResultsOnly(req.query);
+    res.json({ success: true, ...results });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get("/filtered-results-only/NSW/min-max", verifyAPIKey, async (req, res) => {
+  try {
+    const results = await getFilteredTrackSideResultsOnlyminmax(req.query);
     res.json({ success: true, ...results });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

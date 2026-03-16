@@ -491,3 +491,56 @@ export const getFilteredTrackSideResultsOnly = async (query = {}) => {
     return { data: [], totalCount: 0, totalPages: 0, currentPage: 1 };
   }
 };
+
+////////////////
+export const getFilteredTrackSideResultsOnlyminmax = async (query = {}) => {
+  try {
+    const {
+      location = "NSW",
+      min,
+      max,
+    } = query;
+
+    // Get today's date in DD-MM-YYYY format
+    const today = new Date();
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = today.getFullYear();
+    const formattedToday = `${day}-${month}-${year}`;
+
+    const matchQuery = { 
+      location,
+      date: formattedToday
+    };
+
+    // Game Number Range
+    if (min || max) {
+      matchQuery.gameNumber = {};
+      if (min) matchQuery.gameNumber.$gte = parseInt(min);
+      if (max) matchQuery.gameNumber.$lte = parseInt(max);
+    }
+
+    // Aggregation to get only the LATEST entry for each unique gameNumber
+    const results = await TrackSideResult.aggregate([
+      { $match: matchQuery },
+      { $sort: { timestamp: -1 } }, // Newest first
+      { 
+        $group: { 
+          _id: "$gameNumber", 
+          doc: { $first: "$$ROOT" } 
+        } 
+      },
+      { $replaceRoot: { newRoot: "$doc" } },
+      { $sort: { gameNumber: -1 } } // Result sorted by game number descending
+    ]);
+
+    return {
+      success: true,
+      data: results,
+      totalCount: results.length,
+    };
+  } catch (err) {
+    console.error("❌ NSW: Error in minmax aggregation:", err.message);
+    return { success: false, data: [], totalCount: 0 };
+  }
+};
