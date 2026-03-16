@@ -6,7 +6,7 @@ async function testWebhook() {
         type: "checkout.session.completed",
         data: {
             object: {
-                id: "cs_test_b1H7LJPID8RSOjNagzr8MkR2PDFqJGyWPiJCl9gCyx650xxsGYdVYtGANi",
+                id: "cs_test_b1FQZhYLRyqhpZzHyPFmsQr2cLQdO1VtAVZofXYHRrj7I73fE1WOLZx5jF",
                 mode: "subscription",
                 customer: "cus_test_123",
                 subscription: "sub_test_123",

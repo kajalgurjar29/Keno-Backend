@@ -84,13 +84,14 @@ export const createCheckout = async (req, res) => {
       return res.status(500).json({ message: "Stripe Price ID not configured for selected plan" });
     }
 
+    const origin = req.headers.origin || process.env.FRONTEND_URL || process.env.SERVER_URL;
     const sessionData = {
       payment_method_types: ["card"],
       mode: "subscription",
       customer_email: user.email,
       allow_promotion_codes: true, // ✅ ENABLES THE PROMO CODE FIELD
-      success_url: `${process.env.FRONTEND_URL || process.env.SERVER_URL}/payment-success`,
-      cancel_url: `${process.env.FRONTEND_URL || process.env.SERVER_URL}/payment-cancel`,
+      success_url: `${origin}/payment-success`,
+      cancel_url: `${origin}/payment-cancel`,
       metadata: { userId, plan },
       line_items: [
         {
