@@ -111,16 +111,15 @@ export const stripeWebhook = async (req, res) => {
 
       // ✅ UPDATE USER STATUS (CORE CONCEPT)
       const userId = session.metadata?.userId;
-      const plan = session.metadata?.plan || "monthly";
 
       if (userId) {
-        console.log(`🔄 Updating User ${userId} Subscription Status to ${plan}...`);
+        console.log(`🔄 Updating User ${userId} Subscription Status to monthly...`);
 
         try {
           const updatedUser = await User.findByIdAndUpdate(userId, {
             isSubscriptionActive: true,
             isSubscribed: true,
-            planType: plan,
+            planType: "monthly",
             subscriptionStart: new Date(),
             subscriptionEnd: new Date(subscription.current_period_end * 1000),
             stripeSubscriptionId: session.subscription,
@@ -129,11 +128,6 @@ export const stripeWebhook = async (req, res) => {
 
           if (updatedUser) {
             console.log("✅ USER UNLOCKED SUCCESSFULLY:", updatedUser.email);
-            console.log("📊 New Status:", {
-              planType: updatedUser.planType,
-              active: updatedUser.isSubscriptionActive,
-              end: updatedUser.subscriptionEnd
-            });
           } else {
             console.error("❌ User not found with ID:", userId);
           }
@@ -141,7 +135,7 @@ export const stripeWebhook = async (req, res) => {
           console.error("❌ Error updating user in webhook:", updateError);
         }
       } else {
-        console.error("❌ No userId found in session metadata");
+        console.error("❌ No userId found in session metadata. Metadata found:", session.metadata);
       }
     }
   }
@@ -180,36 +174,48 @@ export const stripeWebhook = async (req, res) => {
         { new: true }
       );
 
-      // ✅ UPDATE USER STATUS
-      // We look for userId in payment, but if it's the first payment and payment isn't updated yet,
-      // we might need to rely on the metadata in the invoice if available.
-      let userId = payment?.userId;
+      // 1. Try to find userId in database via subscription ID
+      let targetUserId = payment?.userId;
+      console.log(`🔍 [Invoice] Searching for user by subscription ID: ${invoice.subscription}. Found in DB: ${!!targetUserId}`);
 
-      // Stripe often copies metadata from subscription to invoice
-      if (!userId && invoice.metadata?.userId) {
-        userId = invoice.metadata.userId;
+      // 2. Fallback: Check invoice metadata (Stripe copies this from subscription)
+      if (!targetUserId && invoice.metadata?.userId) {
+        targetUserId = invoice.metadata.userId;
+        console.log(`🔍 [Invoice] Found userId in invoice.metadata: ${targetUserId}`);
       }
 
-      if (userId) {
-        console.log(`🔄 Renewing/Activating User ${userId} via invoice...`);
+      // 3. Last Resort Fallback: Fetch the subscription object from Stripe
+      // Often the first invoice doesn't have metadata yet, but the subscription DOES.
+      if (!targetUserId && invoice.subscription && sig !== "mock") {
+        try {
+          console.log(`🔍 [Invoice] Metadata missing. Fetching subscription ${invoice.subscription} from Stripe...`);
+          const fullSub = await stripe.subscriptions.retrieve(invoice.subscription);
+          targetUserId = fullSub.metadata?.userId;
+          if (targetUserId) console.log(`✅ [Invoice] Recovered userId from Stripe Subscription object: ${targetUserId}`);
+        } catch (subErr) {
+          console.error("❌ [Invoice] Failed to fetch subscription for metadata recovery", subErr.message);
+        }
+      }
+
+      if (targetUserId) {
+        console.log(`🔄 [Invoice] Activating User ${targetUserId}...`);
         const updateData = {
           isSubscriptionActive: true,
           isSubscribed: true,
+          planType: "monthly", // ✅ Force to monthly since we removed yearly
           subscriptionEnd: subscription ? new Date(subscription.current_period_end * 1000) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          stripeSubscriptionId: invoice.subscription,
+          stripeCustomerId: invoice.customer
         };
 
-        // IMPORTANT: Ensure planType is updated to monthly if it was trial
-        // We can't be sure of the plan from invoice alone without complex checks, 
-        // but it's safe to assume 'monthly' as a default if it's currently 'trial'
-        const user = await User.findById(userId);
-        if (user && user.planType === 'trial') {
-          updateData.planType = 'monthly';
+        const updateResult = await User.findByIdAndUpdate(targetUserId, updateData, { new: true });
+        if (updateResult) {
+          console.log("✅ [Invoice] DB UPDATED SUCCESSFULLY for", updateResult.email);
+        } else {
+          console.error("❌ [Invoice] User not found during update:", targetUserId);
         }
-
-        await User.findByIdAndUpdate(userId, updateData);
-        console.log("✅ SUBSCRIPTION UPDATED FOR USER:", userId);
       } else {
-        console.warn("⚠️ Could not find userId to update for invoice:", invoice.id);
+        console.warn("⚠️ [Invoice] COMPLETELY FAILED to find a userId for this payment. Invoice Metadata:", invoice.metadata);
       }
     }
   }

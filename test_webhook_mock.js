@@ -11,7 +11,7 @@ async function testWebhook() {
                 customer: "cus_test_123",
                 subscription: "sub_test_123",
                 metadata: {
-                    userId: "69a97e0c65aa0df002996396",
+                    userId: "696f5ed8a9e5320d0aa2da23",
                     plan: "monthly"
                 }
             }
@@ -19,8 +19,8 @@ async function testWebhook() {
     };
 
     try {
-        console.log("Sending mock webhook to http://localhost:3000/api/v1/stripe/webhook ...");
-        const response = await axios.post('http://localhost:3000/api/v1/stripe/webhook', payload, {
+        console.log("Sending mock webhook to http://127.0.0.1:3000/api/v1/stripe/webhook ...");
+        const response = await axios.post('http://127.0.0.1:3000/api/v1/stripe/webhook', payload, {
             headers: {
                 'stripe-signature': 'mock',
                 'Content-Type': 'application/json'

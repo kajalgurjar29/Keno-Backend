@@ -158,7 +158,7 @@ const userSchema = new mongoose.Schema(
 
     planType: {
       type: String,
-      enum: ["trial", "monthly", "yearly", null],
+      enum: ["trial", "monthly", null],
       default: "trial",
     },
 

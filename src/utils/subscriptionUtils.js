@@ -17,7 +17,7 @@ export const calculateSubscriptionStatus = (user) => {
             isSubscriptionActive = false;
             isSubscribed = false;
         }
-    } else if (user.planType === "monthly" || user.planType === "yearly") {
+    } else if (user.planType === "monthly") {
         // 2. Paid Plan Flow
         if (user.subscriptionEnd && now <= new Date(user.subscriptionEnd)) {
             isSubscriptionActive = true;

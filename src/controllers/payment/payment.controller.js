@@ -73,15 +73,10 @@ export const createCheckout = async (req, res) => {
       return res.status(400).json({ message: "Plan (monthly or yearly) is required" });
     }
 
-    let priceId;
-    if (plan === "yearly") {
-      priceId = process.env.STRIPE_YEARLY_PRICE_ID;
-    } else {
-      priceId = process.env.STRIPE_MONTHLY_PRICE_ID || process.env.STRIPE_PRICE_ID;
-    }
+    const priceId = process.env.STRIPE_MONTHLY_PRICE_ID || process.env.STRIPE_PRICE_ID;
 
     if (!priceId) {
-      return res.status(500).json({ message: "Stripe Price ID not configured for selected plan" });
+      return res.status(500).json({ message: "Stripe Price ID not configured" });
     }
 
     const origin = req.headers.origin || process.env.FRONTEND_URL || process.env.SERVER_URL;
@@ -92,7 +87,10 @@ export const createCheckout = async (req, res) => {
       allow_promotion_codes: true, // ✅ ENABLES THE PROMO CODE FIELD
       success_url: `${origin}/payment-success`,
       cancel_url: `${origin}/payment-cancel`,
-      metadata: { userId, plan },
+      metadata: { userId, plan: "monthly" },
+      subscription_data: {
+        metadata: { userId, plan: "monthly" }, // ✅ PERSISTS TO FUTURE INVOICES
+      },
       line_items: [
         {
           price: priceId,
@@ -108,8 +106,8 @@ export const createCheckout = async (req, res) => {
     await Payment.create({
       userId,
       stripeSessionId: session.id,
-      plan: plan,
-      amount: plan === "yearly" ? 299.99 : 29.99, // Adjust standard amounts as fallback
+      plan: "monthly",
+      amount: 29.99, // Standard monthly amount
       status: "pending",
     });
 
