@@ -23,7 +23,7 @@
 //           price_data: {
 //             currency: "usd",
 //             product_data: {
-//               name: "Puntmate Monthly Plan",
+//               name: "PuntmaData Monthly Plan",
 //             },
 //             unit_amount: 2999, // $29.99
 //             recurring: {
