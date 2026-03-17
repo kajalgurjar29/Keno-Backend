@@ -32,12 +32,12 @@ export const requestPasswordReset = async (req, res) => {
     await OtpToken.create({ userId: user._id, otp, expiry });
 
     // 4. Send email with OTP
-    const subject = "Password Reset Request - Punt data";
+    const subject = "Password Reset Request - Punt Data";
     const textMessage = `Hello ${user.fullName}, You requested a password reset. Your OTP is: ${otp}. This will expire in 10 minutes.`;
     const htmlMessage = `
       <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 12px; background-color: #ffffff;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #1a1a1a; margin: 0; font-size: 28px; letter-spacing: -0.5px;">Punt <span style="color: #0066ff;">Mate</span></h1>
+          <h1 style="color: #1a1a1a; margin: 0; font-size: 28px; letter-spacing: -0.5px;">Punt <span style="color: #0066ff;">Data</span></h1>
         </div>
         <div style="padding: 20px; background-color: #fff9f0; border-radius: 8px; text-align: center; border: 1px solid #ffeeba;">
           <p style="font-size: 16px; color: #444; margin-top: 0;">Hello <strong>${user.fullName}</strong>,</p>
@@ -48,7 +48,7 @@ export const requestPasswordReset = async (req, res) => {
           <p style="font-size: 14px; color: #888;">This code will expire in <strong>10 minutes</strong>. If you didn't request this, please secure your account.</p>
         </div>
         <div style="margin-top: 30px; text-align: center; border-top: 1px solid #eee; padding-top: 20px;">
-          <p style="font-size: 12px; color: #aaa;">&copy; 2026 Punt data. All rights reserved.</p>
+          <p style="font-size: 12px; color: #aaa;">&copy; 2026 Punt Data. All rights reserved.</p>
         </div>
       </div>
     `;
@@ -148,7 +148,7 @@ export const requestPinReset = async (req, res) => {
     const htmlMessage = `
       <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 12px; background-color: #ffffff;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #1a1a1a; margin: 0; font-size: 28px; letter-spacing: -0.5px;">Punt <span style="color: #0066ff;">Mate</span></h1>
+          <h1 style="color: #1a1a1a; margin: 0; font-size: 28px; letter-spacing: -0.5px;">Punt <span style="color: #0066ff;">Data</span></h1>
         </div>
         <div style="padding: 20px; background-color: #f0f7ff; border-radius: 8px; text-align: center; border: 1px solid #bee5eb;">
           <p style="font-size: 16px; color: #444; margin-top: 0;">Hello <strong>${user.fullName}</strong>,</p>

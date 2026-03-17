@@ -86,7 +86,7 @@ export const registerUser = async (req, res) => {
           <p style="font-size: 14px; color: #888;">This code will expire in <strong>10 minutes</strong>.</p>
         </div>
         <div style="margin-top: 30px; text-align: center; border-top: 1px solid #eee; padding-top: 20px;">
-          <p style="font-size: 12px; color: #aaa;">If you didn't create an account with Punt data, you can safely ignore this email.</p>
+          <p style="font-size: 12px; color: #aaa;">If you didn't create an account with Punt Data, you can safely ignore this email.</p>
           <p style="font-size: 12px; color: #aaa;">&copy; 2026 Punt Data. All rights reserved.</p>
         </div>
       </div>
