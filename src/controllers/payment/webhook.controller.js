@@ -31,16 +31,9 @@ export const devAutoActivate = async (req, res) => {
   }
 };
 
-import fs from 'fs';
-import path from 'path';
-
 export const stripeWebhook = async (req, res) => {
   const sig = req.headers["stripe-signature"];
   let event;
-
-  // 📝 DEBUG LOGGING TO FILE
-  const logMessage = `\n[${new Date().toISOString()}] ⚓ Webhook Signal Received - Sig: ${sig ? 'YES' : 'NO'}\n`;
-  fs.appendFileSync('stripe_debug.log', logMessage);
 
   console.log("⚓ Stripe Webhook received signal");
 
@@ -50,184 +43,163 @@ export const stripeWebhook = async (req, res) => {
   }
 
   try {
-    // Ensure req.body is a buffer for constructEvent (Stripe requires raw body)
-  const payload = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
-  
-  try {
+    console.log("📦 Webhook Body Type:", typeof req.body, "IsBuffer:", Buffer.isBuffer(req.body));
+
+    // 🧪 MOCK MODE FOR POSTMAN TESTING
     if (sig === "mock") {
-      event = JSON.parse(payload.toString());
+      console.log("⚠️ DEBUG: Using MOCK event (Signature verification skipped)");
+      // If req.body is a buffer (because of express.raw), parse it
+      event = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
     } else {
-      event = stripe.webhooks.constructEvent(payload, sig, process.env.STRIPE_WEBHOOK_SECRET);
+      // Ensure req.body is a buffer for constructEvent
+      const payload = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
+
+      event = stripe.webhooks.constructEvent(
+        payload,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
     }
+    console.log("✅ Stripe Event Verified:", event.type, "ID:", event.id);
   } catch (err) {
     console.error("❌ Webhook Error:", err.message);
+    console.error("Signature received:", sig ? "YES" : "NO");
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // 📝 DEBUG LOGS (FIX 4)
-  console.log("🔥 Webhook received");
-  console.log("EVENT TYPE:", event.type);
-
-  let userId = null;
-
   /* ===============================
-     1. CHECKOUT SESSION COMPLETED (Initial Payment)
+     CHECKOUT COMPLETED (SUBSCRIPTION)
      =============================== */
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
-    userId = session.metadata?.userId;
-    console.log("🔍 FINAL userId (Session):", userId);
 
     if (session.mode === "subscription") {
-      let subscriptionData;
-      try {
-        subscriptionData = sig === "mock" ? { current_period_end: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60 } : await stripe.subscriptions.retrieve(session.subscription);
-      } catch (err) {
-        console.error("⚠️ Retrieval error (non-fatal):", err.message);
+      let subscription;
+      if (sig === "mock") {
+        // 🧪 Mock subscription data for testing
+        subscription = {
+          current_period_end: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // +30 days
+        };
+      } else {
+        subscription = await stripe.subscriptions.retrieve(session.subscription);
       }
 
-      // Update DB record for the payment itself
-      await Payment.findOneAndUpdate(
+      // ✅ Update Payment
+      const payment = await Payment.findOneAndUpdate(
         { stripeSessionId: session.id },
         {
           stripeCustomerId: session.customer,
           stripeSubscriptionId: session.subscription,
           status: "active",
-          currentPeriodEnd: subscriptionData ? new Date(subscriptionData.current_period_end * 1000) : undefined,
-        }
+          currentPeriodEnd: new Date(
+            subscription.current_period_end * 1000
+          ),
+        },
+        { new: true }
       );
 
-      // 🔥 FIX 1: SAFE USER UPDATE
+      // ✅ UPDATE USER STATUS (CORE CONCEPT)
+      const userId = session.metadata?.userId;
+      const plan = session.metadata?.plan || "monthly";
       if (userId) {
-        const user = await User.findById(userId);
-        if (!user) {
-          console.error("❌ User not found in DB during checkout.session.completed:", userId);
-        } else {
-          await User.findByIdAndUpdate(userId, {
+        console.log(`🔄 Updating User ${userId} Subscription Status...`);
+
+        try {
+          const updatedUser = await User.findByIdAndUpdate(userId, {
             isSubscriptionActive: true,
             isSubscribed: true,
-            // Use metadata plan if available, or default to monthly
-            planType: session.metadata?.plan || "monthly",
+            planType: plan,
             subscriptionStart: new Date(),
-            subscriptionEnd: subscriptionData ? new Date(subscriptionData.current_period_end * 1000) : undefined,
+            subscriptionEnd: new Date(subscription.current_period_end * 1000),
             stripeSubscriptionId: session.subscription,
             stripeCustomerId: session.customer
-          });
-          console.log(`🎉 SUCCESS: User ${user.email} is now ACTIVE.`);
+          }, { new: true });
+
+          if (updatedUser) {
+            console.log("✅ USER UNLOCKED SUCCESSFULLY:", updatedUser.email);
+          } else {
+            console.error("❌ User not found with ID:", userId);
+          }
+        } catch (updateError) {
+          console.error("❌ Error updating user in webhook:", updateError);
         }
-      } else {
-        console.error("❌ Missing userId in session metadata.");
-      }
-    } 
-    
-    // CASE B: ONE-TIME PAYMENT MODE
-    else if (session.mode === "payment") {
-      await Payment.findOneAndUpdate(
-        { stripeSessionId: session.id },
-        { status: "active", stripeCustomerId: session.customer }
-      );
-      if (userId) {
-        await User.findByIdAndUpdate(userId, { isSubscriptionActive: true, isSubscribed: true });
-        console.log(`✅ SUCCESS: One-time payment for User ID: ${userId}`);
       }
     }
   }
 
   /* ===============================
-     2. INVOICE PAID (RECURRING RENEWAL / FIRST PAYMENT)
+     INVOICE PAID (RENEWAL / TRIAL END)
      =============================== */
   if (event.type === "invoice.payment_succeeded") {
     const invoice = event.data.object;
-    console.log(`🔄 [INVOICE] paymentucceeded for Sub ID: ${invoice.subscription}`);
-    
-    // 🔥 FIX 2 & 3: Robust userId extraction
-    userId = invoice.metadata?.userId; 
+    console.log("🔥 STRIPE WEBHOOK HIT:", event.type);
 
-    if (!userId && invoice.subscription) {
-      console.log("🔍 Metadata missing in invoice. Checking DB...");
-      const payment = await Payment.findOne({ stripeSubscriptionId: invoice.subscription });
-      userId = payment?.userId;
-    }
-
-    if (!userId && invoice.subscription && sig !== "mock") {
-      console.log("🔍 Metadata missing in DB. Retrieving subscription from Stripe...");
-      try {
-        const fullSub = await stripe.subscriptions.retrieve(invoice.subscription);
-        userId = fullSub.metadata?.userId;
-      } catch (err) {}
-    }
-
-    console.log("🔍 FINAL userId (Invoice):", userId);
-
-    if (userId) {
-      const user = await User.findById(userId);
-      if (!user) {
-        console.error("❌ User not found in DB during invoice.payment_succeeded:", userId);
+    if (invoice.subscription) {
+      let subscription;
+      if (sig === "mock") {
+        subscription = {
+          current_period_end: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+        };
       } else {
-        let subscriptionData;
-        try {
-            subscriptionData = sig === "mock" ? { current_period_end: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60 } : await stripe.subscriptions.retrieve(invoice.subscription);
-        } catch (err) {}
+        subscription = await stripe.subscriptions.retrieve(invoice.subscription);
+      }
 
-        await User.findByIdAndUpdate(userId, {
+      const payment = await Payment.findOneAndUpdate(
+        { stripeSubscriptionId: invoice.subscription },
+        {
+          status: "active",
+          currentPeriodEnd: new Date(
+            subscription.current_period_end * 1000
+          ),
+        },
+        { new: true }
+      );
+
+      // ✅ UPDATE USER STATUS (CORE CONCEPT)
+      if (payment?.userId) {
+        await User.findByIdAndUpdate(payment.userId, {
           isSubscriptionActive: true,
           isSubscribed: true,
-          subscriptionEnd: subscriptionData ? new Date(subscriptionData.current_period_end * 1000) : undefined
+          subscriptionEnd: new Date(subscription.current_period_end * 1000),
         });
-        
-        await Payment.findOneAndUpdate(
-          { stripeSubscriptionId: invoice.subscription },
-          { status: "active", currentPeriodEnd: subscriptionData ? new Date(subscriptionData.current_period_end * 1000) : undefined }
-        );
-        console.log(`✅ SUCCESS: DB Updated for User: ${user.email}`);
+        console.log("✅ SUBSCRIPTION RENEWED FOR USER:", payment.userId);
       }
-    } else {
-       console.error("❌ No userId found. Update skipped.");
     }
   }
 
   /* ===============================
-     3. SUBSCRIPTION CANCELLED / DELETED
+     SUBSCRIPTION CANCELLED
      =============================== */
   if (event.type === "customer.subscription.deleted") {
-    const subId = event.data.object.id;
-    console.log(`❌ Subscription DELETED/CANCELLED: ${subId}`);
-    
     const payment = await Payment.findOneAndUpdate(
-      { stripeSubscriptionId: subId },
-      { status: "cancelled" }
+      { stripeSubscriptionId: event.data.object.id },
+      { status: "cancelled" },
+      { new: true }
     );
 
+    // ✅ UPDATE USER STATUS (CORE CONCEPT)
     if (payment?.userId) {
-      await User.findByIdAndUpdate(payment.userId, { isSubscriptionActive: false });
-      console.log(`🔓 User ID ${payment.userId} marked as INACTIVE.`);
+      await User.findByIdAndUpdate(payment.userId, {
+        isSubscriptionActive: false,
+      });
+      console.log("❌ SUBSCRIPTION CANCELLED FOR USER:", payment.userId);
     }
   }
 
   /* ===============================
-     4. PAYMENT FAILED (INVOICE OR INTENT)
+     PAYMENT FAILED
      =============================== */
-  if (event.type === "invoice.payment_failed" || event.type === "payment_intent.payment_failed") {
-    const failId = event.type === "invoice.payment_failed" ? event.data.object.subscription : event.data.object.id;
-    console.log(`📉 PAYMENT FAILED event received (${event.type}) for ID: ${failId}`);
-    
-    const payment = await Payment.findOneAndUpdate(
-      { $or: [{ stripeSubscriptionId: failId }, { stripeSessionId: failId }] },
-      { status: "cancelled" }
-    );
+  if (event.type === "invoice.payment_failed") {
+    const invoice = event.data.object;
+    const payment = await Payment.findOne({ stripeSubscriptionId: invoice.subscription });
 
     if (payment?.userId) {
-      await User.findByIdAndUpdate(payment.userId, { isSubscriptionActive: false });
-      console.log(`❌ Failure handled: User ID ${payment.userId} deactivated.`);
+      await User.findByIdAndUpdate(payment.userId, {
+        isSubscriptionActive: false,
+      });
+      console.log("❌ PAYMENT FAILED FOR USER:", payment.userId);
     }
   }
 
-  // 🔥 FIX 3: ALWAYS RETURN SUCCESS TO STRIPE
   res.json({ received: true });
-
-  } catch (err) {
-    // 🔥 FIX 2: GLOBAL CATCH TO AVOID 500 ERRORS
-    console.error("💥 WEBHOOK HANDLER ERROR:", err.message);
-    res.json({ received: true, error_internal: err.message });
-  }
 };

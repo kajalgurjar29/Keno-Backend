@@ -28,6 +28,7 @@ const paymentSchema = new mongoose.Schema(
     },
 
     currentPeriodEnd: Date,
+    errorLog: String,
   },
   { timestamps: true }
 );

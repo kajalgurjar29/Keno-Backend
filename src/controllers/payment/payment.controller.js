@@ -23,7 +23,7 @@
 //           price_data: {
 //             currency: "usd",
 //             product_data: {
-//               name: "PuntmaData Monthly Plan",
+//               name: "Puntmate Monthly Plan",
 //             },
 //             unit_amount: 2999, // $29.99
 //             recurring: {
@@ -73,24 +73,25 @@ export const createCheckout = async (req, res) => {
       return res.status(400).json({ message: "Plan (monthly or yearly) is required" });
     }
 
-    const priceId = process.env.STRIPE_MONTHLY_PRICE_ID || process.env.STRIPE_PRICE_ID;
-
-    if (!priceId) {
-      return res.status(500).json({ message: "Stripe Price ID not configured" });
+    let priceId;
+    if (plan === "yearly") {
+      priceId = process.env.STRIPE_YEARLY_PRICE_ID;
+    } else {
+      priceId = process.env.STRIPE_MONTHLY_PRICE_ID || process.env.STRIPE_PRICE_ID;
     }
 
-    const origin = req.headers.origin || process.env.FRONTEND_URL || process.env.SERVER_URL;
+    if (!priceId) {
+      return res.status(500).json({ message: "Stripe Price ID not configured for selected plan" });
+    }
+
     const sessionData = {
       payment_method_types: ["card"],
       mode: "subscription",
       customer_email: user.email,
       allow_promotion_codes: true, // ✅ ENABLES THE PROMO CODE FIELD
-      success_url: `${origin}/payment-success`,
-      cancel_url: `${origin}/payment-cancel`,
-      metadata: { userId: userId.toString(), plan: "monthly" },
-      subscription_data: {
-        metadata: { userId: userId.toString(), plan: "monthly" }, // ✅ PERSISTS TO FUTURE INVOICES
-      },
+      success_url: `${process.env.FRONTEND_URL || process.env.SERVER_URL}/payment-success`,
+      cancel_url: `${process.env.FRONTEND_URL || process.env.SERVER_URL}/payment-cancel`,
+      metadata: { userId, plan },
       line_items: [
         {
           price: priceId,
@@ -106,10 +107,8 @@ export const createCheckout = async (req, res) => {
     await Payment.create({
       userId,
       stripeSessionId: session.id,
-      stripeSubscriptionId: session.subscription, // ✅ PRO TIP: SAVE NOW TO PREVENT RACE CONDITIONS
-      stripeCustomerId: session.customer,       // ✅ PRO TIP: SAVE NOW
-      plan: plan || "monthly",
-      amount: 29.99,
+      plan: plan,
+      amount: plan === "yearly" ? 299.99 : 29.99, // Adjust standard amounts as fallback
       status: "pending",
     });
 
