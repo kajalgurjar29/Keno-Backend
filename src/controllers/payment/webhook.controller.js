@@ -31,9 +31,16 @@ export const devAutoActivate = async (req, res) => {
   }
 };
 
+import fs from 'fs';
+import path from 'path';
+
 export const stripeWebhook = async (req, res) => {
   const sig = req.headers["stripe-signature"];
   let event;
+
+  // 📝 DEBUG LOGGING TO FILE
+  const logMessage = `\n[${new Date().toISOString()}] ⚓ Webhook Signal Received - Sig: ${sig ? 'YES' : 'NO'}\n`;
+  fs.appendFileSync('stripe_debug.log', logMessage);
 
   console.log("⚓ Stripe Webhook received signal");
 
@@ -44,169 +51,133 @@ export const stripeWebhook = async (req, res) => {
 
   try {
     // Ensure req.body is a buffer for constructEvent (Stripe requires raw body)
-    const payload = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
-
+  const payload = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
+  
+  try {
     if (sig === "mock") {
-      console.log("⚠️ DEBUG: Using MOCK event (Signature verification skipped)");
       event = JSON.parse(payload.toString());
     } else {
-      event = stripe.webhooks.constructEvent(
-        payload,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
+      event = stripe.webhooks.constructEvent(payload, sig, process.env.STRIPE_WEBHOOK_SECRET);
     }
-    console.log("✅ Stripe Event Verified:", event.type, "ID:", event.id);
   } catch (err) {
     console.error("❌ Webhook Error:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  const session = event.data.object;
-  const metadata = session.metadata || {};
-  const userId = metadata.userId;
+  // 📝 DEBUG LOGS (FIX 4)
+  console.log("🔥 Webhook received");
+  console.log("EVENT TYPE:", event.type);
+
+  let userId = null; // 🔥 FIX 2: Initialize userId globally but extract per event
 
   /* ===============================
-     1. CHECKOUT SESSION COMPLETED
+     1. CHECKOUT SESSION COMPLETED (Initial Payment)
      =============================== */
   if (event.type === "checkout.session.completed") {
-    console.log(`🚀 PROCESSING checkout.session.completed for Session ID: ${session.id}`);
+    const session = event.data.object;
+    userId = session.metadata?.userId; // 🔥 FIX 2: Extract from session metadata
+    console.log("🔍 FINAL userId (Session):", userId);
 
     // CASE A: SUBSCRIPTION MODE
     if (session.mode === "subscription") {
-      console.log(`📝 Subscription mode detected. Sub ID: ${session.subscription}`);
-      let subscription;
+      let subscriptionData;
       try {
-        if (sig === "mock") {
-          subscription = { current_period_end: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60 };
-        } else {
-          subscription = await stripe.subscriptions.retrieve(session.subscription);
-        }
-      } catch (retrieveError) {
-        console.error("❌ Error retrieving subscription from Stripe:", retrieveError.message);
+        subscriptionData = sig === "mock" ? { current_period_end: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60 } : await stripe.subscriptions.retrieve(session.subscription);
+      } catch (err) {
+        console.error("❌ Error retrieving subscription from Stripe:", err.message);
         return res.status(500).json({ error: "Failed to retrieve subscription details" });
       }
 
       // Update internal Payment record
-      const paymentUpdate = await Payment.findOneAndUpdate(
+      await Payment.findOneAndUpdate(
         { stripeSessionId: session.id },
         {
           stripeCustomerId: session.customer,
           stripeSubscriptionId: session.subscription,
           status: "active",
-          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-        },
-        { new: true }
-      );
-      
-      if (paymentUpdate) {
-        console.log(`✅ Payment record updated: ${paymentUpdate._id}`);
-      } else {
-        console.warn(`⚠️ Payment record not found for Session ID: ${session.id}. Creating new record...`);
-        if (userId) {
-          await Payment.create({
-            userId,
-            stripeSessionId: session.id,
-            stripeCustomerId: session.customer,
-            stripeSubscriptionId: session.subscription,
-            status: "active",
-            currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-            amount: session.amount_total / 100 || 29.99
-          });
+          currentPeriodEnd: subscriptionData ? new Date(subscriptionData.current_period_end * 1000) : undefined,
         }
-      }
+      );
 
       // Unlock User
       if (userId) {
         console.log(`🔄 Unlocking User ID: ${userId} (from metadata)...`);
-        const userUpdate = await User.findByIdAndUpdate(userId, {
+        await User.findByIdAndUpdate(userId, {
           isSubscriptionActive: true,
           isSubscribed: true,
-          planType: metadata.plan || "monthly",
+          planType: session.metadata.plan || "monthly", // Assuming plan is in session metadata
           subscriptionStart: new Date(),
-          subscriptionEnd: new Date(subscription.current_period_end * 1000),
+          subscriptionEnd: subscriptionData ? new Date(subscriptionData.current_period_end * 1000) : undefined,
           stripeSubscriptionId: session.subscription,
           stripeCustomerId: session.customer
-        }, { new: true });
-        
-        if (userUpdate) {
-          console.log(`🎉 SUCCESS: User ${userUpdate.email} is now SUBSCRIBED.`);
-        } else {
-          console.error(`❌ FAILED: User ID ${userId} not found in database.`);
-        }
-      } else {
-        console.error("❌ CRITICAL: No userId found in session metadata!");
+        });
+        console.log(`🎉 SUCCESS: User ID ${userId} is now SUBSCRIBED.`);
       }
     } 
     
     // CASE B: ONE-TIME PAYMENT MODE
     else if (session.mode === "payment") {
-      console.log(`💰 One-time payment mode detected. Session: ${session.id}`);
-      
       await Payment.findOneAndUpdate(
         { stripeSessionId: session.id },
-        {
-          status: "active",
-          stripeCustomerId: session.customer,
-        }
+        { status: "active", stripeCustomerId: session.customer }
       );
-
       if (userId) {
-        await User.findByIdAndUpdate(userId, {
-          isSubscriptionActive: true,
-          isSubscribed: true,
-        });
-        console.log(`✅ SUCCESS: User ID ${userId} unlocked for one-time payment.`);
+        await User.findByIdAndUpdate(userId, { isSubscriptionActive: true, isSubscribed: true });
+        console.log(`✅ SUCCESS: One-time payment for User ID: ${userId}`);
       }
     }
   }
 
   /* ===============================
-     2. INVOICE PAID (RECURRING RENEWAL)
+     2. INVOICE PAID (RECURRING RENEWAL / FIRST PAYMENT)
      =============================== */
   if (event.type === "invoice.payment_succeeded") {
     const invoice = event.data.object;
-    console.log(`🔄 Invoice payment succeeded for Sub ID: ${invoice.subscription}`);
+    console.log(`🔄 [INVOICE] paymentucceeded for Sub ID: ${invoice.subscription}`);
+    
+    // 🔥 FIX 2 & 3: Robust userId extraction for invoices
+    userId = invoice.metadata?.userId; 
 
-    if (invoice.subscription) {
-      let subscription;
-      try {
-        if (sig !== "mock") {
-          subscription = await stripe.subscriptions.retrieve(invoice.subscription);
-        } else {
-          subscription = { current_period_end: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60 };
-        }
-      } catch (retrieveError) {
-        console.error("❌ Error retrieving subscription for invoice:", retrieveError.message);
-      }
-
-      // Try to find user via subscription ID or metadata
+    if (!userId && invoice.subscription) {
+      console.log("🔍 Metadata missing in invoice. Checking DB...");
       const payment = await Payment.findOne({ stripeSubscriptionId: invoice.subscription });
-      let targetUserId = payment?.userId || invoice.metadata?.userId;
+      userId = payment?.userId;
+    }
 
-      if (!targetUserId && invoice.subscription && sig !== "mock") {
-        try {
-          const fullSub = await stripe.subscriptions.retrieve(invoice.subscription);
-          targetUserId = fullSub.metadata?.userId;
-        } catch (err) {}
+    if (!userId && invoice.subscription && sig !== "mock") {
+      console.log("🔍 Metadata missing in DB. Retrieving subscription from Stripe...");
+      try {
+        const fullSub = await stripe.subscriptions.retrieve(invoice.subscription);
+        userId = fullSub.metadata?.userId;
+      } catch (err) {
+        console.error("❌ Error retrieving subscription for userId fallback:", err.message);
+      }
+    }
+
+    console.log("🔍 FINAL userId (Invoice):", userId);
+
+    if (userId) {
+      let subscriptionData;
+      try {
+          subscriptionData = sig === "mock" ? { current_period_end: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60 } : await stripe.subscriptions.retrieve(invoice.subscription);
+      } catch (err) {
+        console.error("❌ Error retrieving subscription for renewal update:", err.message);
       }
 
-      if (targetUserId) {
-        console.log(`♻️ RENEWING subscription for User ID: ${targetUserId}...`);
-        await User.findByIdAndUpdate(targetUserId, {
-          isSubscriptionActive: true,
-          isSubscribed: true,
-          subscriptionEnd: subscription ? new Date(subscription.current_period_end * 1000) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        });
-        
-        await Payment.findOneAndUpdate(
-          { stripeSubscriptionId: invoice.subscription },
-          { status: "active", currentPeriodEnd: subscription ? new Date(subscription.current_period_end * 1000) : undefined }
-        );
-        console.log(`✅ RENEWAL COMPLETE for User ID: ${targetUserId}`);
-      } else {
-        console.warn(`⚠️ Could not identify user for invoice ${invoice.id}`);
-      }
+      await User.findByIdAndUpdate(userId, {
+        isSubscriptionActive: true,
+        isSubscribed: true,
+        subscriptionEnd: subscriptionData ? new Date(subscriptionData.current_period_end * 1000) : undefined
+      });
+      
+      await Payment.findOneAndUpdate(
+        { stripeSubscriptionId: invoice.subscription },
+        { status: "active", currentPeriodEnd: subscriptionData ? new Date(subscriptionData.current_period_end * 1000) : undefined }
+      );
+      console.log(`✅ SUCCESS: DB Updated for User ID: ${userId}`);
+    } else {
+       // 🔥 FIX 4: Log error if still not found
+       console.error("❌ No userId found. Cannot update DB for invoice.payment_succeeded event.");
     }
   }
 
@@ -247,5 +218,8 @@ export const stripeWebhook = async (req, res) => {
   }
 
   res.json({ received: true });
+  } catch (err) {
+    console.error("💥 WEBHOOK HANDLER ERROR:", err.message);
+    res.status(500).json({ error: "Internal server error during webhook processing" });
+  }
 };
-

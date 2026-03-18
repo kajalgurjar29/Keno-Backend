@@ -106,8 +106,10 @@ export const createCheckout = async (req, res) => {
     await Payment.create({
       userId,
       stripeSessionId: session.id,
-      plan: "monthly",
-      amount: 29.99, // Standard monthly amount
+      stripeSubscriptionId: session.subscription, // ✅ PRO TIP: SAVE NOW TO PREVENT RACE CONDITIONS
+      stripeCustomerId: session.customer,       // ✅ PRO TIP: SAVE NOW
+      plan: plan || "monthly",
+      amount: 29.99,
       status: "pending",
     });
 

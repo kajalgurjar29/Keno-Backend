@@ -73,7 +73,6 @@ app.options("*", cors());
 
 app.use("/api/v1/stripe", stripeRoutes);
 
-
 app.use(express.json());
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true, limit: "16kb" }));
