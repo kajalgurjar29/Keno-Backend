@@ -106,7 +106,7 @@ import trackSideQuickStatsRouter from "./src/routers/kenoQuickStats.router.js";
 import notificationRoutes from "./src/routers/notification.routes.js";
 import adminAnalyticsRoutes from "./src/models/admin.analytics.routes.js";
 import kenoLiveRoute from "./src/routers/kenoLive.route.js";
-import kenoHotColdRoute from "./src/routers/kenoHotCold.route.js";
+// import kenoHotColdRoute from "./src/routers/kenoHotCold.route.js";
 import kenoDashboardRoute from "./src/routers/kenoDashboard.route.js";
 import resultsRoutes from "./src/routers/results.routes.js";
 import paymentRoutes from "./src/routers/payment.routes.js";
@@ -120,7 +120,7 @@ import kenoAnalyticsRouter from "./src/routers/KenoAnalytics.router.js";
 
 app.use("/api/v1/notification", notificationRoutes);
 app.use("/api/v1", kenoLiveRoute);
-app.use("/api/v1", kenoHotColdRoute);
+// app.use("/api/v1", kenoHotColdRoute);
 app.use("/api/v1", kenoDashboardRoute);
 app.use("/api/v1/results", resultsRoutes);
 

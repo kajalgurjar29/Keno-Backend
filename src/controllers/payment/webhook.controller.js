@@ -72,56 +72,156 @@ export const stripeWebhook = async (req, res) => {
      =============================== */
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
+    console.log("✅ CHECKOUT COMPLETED EVENT:", session.id);
+    console.log("📋 Session Details:", {
+      mode: session.mode,
+      customer: session.customer,
+      subscription: session.subscription,
+      metadata: session.metadata
+    });
 
     if (session.mode === "subscription") {
-      let subscription;
-      if (sig === "mock") {
-        // 🧪 Mock subscription data for testing
-        subscription = {
-          current_period_end: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // +30 days
-        };
-      } else {
-        subscription = await stripe.subscriptions.retrieve(session.subscription);
-      }
-
-      // ✅ Update Payment
-      const payment = await Payment.findOneAndUpdate(
-        { stripeSessionId: session.id },
-        {
-          stripeCustomerId: session.customer,
-          stripeSubscriptionId: session.subscription,
-          status: "active",
-          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-        },
-        { new: true }
-      );
-
-      // ✅ UPDATE USER STATUS (CORE CONCEPT)
-      // Fallback: If metadata is missing, get userId from the Payment record we just found/updated
-      let userId = session.metadata?.userId || payment?.userId;
-      const plan = session.metadata?.plan || payment?.plan || "monthly";
-      if (userId) {
-        console.log(`🔄 Updating User ${userId} Subscription Status...`);
-
-        try {
-          const updatedUser = await User.findByIdAndUpdate(userId, {
-            isSubscriptionActive: true,
-            isSubscribed: true,
-            planType: plan,
-            subscriptionStart: new Date(),
-            subscriptionEnd: new Date(subscription.current_period_end * 1000),
-            stripeSubscriptionId: session.subscription,
-            stripeCustomerId: session.customer
-          }, { new: true });
-
-          if (updatedUser) {
-            console.log("✅ USER UNLOCKED SUCCESSFULLY:", updatedUser.email);
-          } else {
-            console.error("❌ User not found with ID:", userId);
+      try {
+        let subscription;
+        if (sig === "mock") {
+          // 🧪 Mock subscription data for testing
+          subscription = {
+            current_period_end: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // +30 days
+          };
+        } else {
+          if (!session.subscription) {
+            console.error("❌ No subscription ID in session:", session.id);
+            return res.status(400).send("No subscription in session");
           }
-        } catch (updateError) {
-          console.error("❌ Error updating user in webhook:", updateError);
+          subscription = await stripe.subscriptions.retrieve(session.subscription);
         }
+
+        console.log("📊 Subscription retrieved:", subscription.id);
+
+        // 🔍 DEBUG: Check if Payment record exists BEFORE update
+        console.log("🔍 Searching for Payment with stripeSessionId:", session.id);
+        const existingPayment = await Payment.findOne({ stripeSessionId: session.id });
+        if (existingPayment) {
+          console.log("✅ Found existing Payment record:", existingPayment._id, "userId:", existingPayment.userId);
+        } else {
+          console.warn("⚠️ NO Payment record found for this session! Creating one...");
+        }
+
+        // ✅ Update Payment
+        const payment = await Payment.findOneAndUpdate(
+          { stripeSessionId: session.id },
+          {
+            stripeCustomerId: session.customer,
+            stripeSubscriptionId: session.subscription,
+            status: "active",
+            currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+          },
+          { new: true, upsert: true } // 🆕 upsert: creates if not found
+        );
+
+        if (payment) {
+          console.log("✅ Payment updated to status: active", payment._id);
+          console.log("💾 Payment Record NOW:", {
+            _id: payment._id,
+            userId: payment.userId,
+            stripeSessionId: payment.stripeSessionId,
+            stripeSubscriptionId: payment.stripeSubscriptionId,
+            status: payment.status,
+            currentPeriodEnd: payment.currentPeriodEnd
+          });
+        } else {
+          console.error("❌ Payment record still null after update!");
+        }
+
+        // ✅ UPDATE USER STATUS (CORE CONCEPT)
+        let userId = session.metadata?.userId || payment?.userId;
+        const plan = session.metadata?.plan || payment?.plan || "monthly";
+        
+        console.log("📌 User Info from session:", {
+          userId: userId,
+          plan: plan,
+          metadataUserId: session.metadata?.userId,
+          paymentUserId: payment?.userId
+        });
+
+        console.log("🔍 DEBUG: userId value:", userId, "| Type:", typeof userId, "| Payment userId:", payment?.userId);
+
+        if (userId) {
+          console.log(`🔄 Updating User ${userId} Subscription Status...`);
+          console.log("   userId type:", typeof userId);
+          console.log("   userId stringified:", JSON.stringify(userId));
+
+          // 🔍 DEBUG: Check if User exists
+          try {
+            const userExists = await User.findById(userId);
+            console.log("🔍 User.findById query result:", userExists ? "FOUND" : "NOT FOUND");
+            
+            if (!userExists) {
+              console.error("❌ User NOT FOUND in database with ID:", userId);
+              console.error("   Type of userId:", typeof userId);
+              console.error("   Hint: Check if userId is correct and user was created");
+              
+              // Try alternative queries for debugging
+              const userByEmail = await User.findOne({ email: userExists?.email });
+              console.log("🔍 Alternative query (by email):", userByEmail ? "FOUND" : "NOT FOUND");
+            } else {
+              console.log("✅ User exists:", userExists.email, "| ID:", userExists._id);
+            }
+          } catch (findError) {
+            console.error("❌ Error finding user:", findError.message);
+          }
+
+          try {
+            console.log("📝 About to update User with data:", {
+              isSubscriptionActive: true,
+              isSubscribed: true,
+              planType: plan,
+              stripeSubscriptionId: session.subscription,
+              stripeCustomerId: session.customer
+            });
+
+            const updatedUser = await User.findByIdAndUpdate(
+              userId, 
+              {
+                isSubscriptionActive: true,
+                isSubscribed: true,
+                planType: plan,
+                subscriptionStart: new Date(),
+                subscriptionEnd: new Date(subscription.current_period_end * 1000),
+                stripeSubscriptionId: session.subscription,
+                stripeCustomerId: session.customer
+              }, 
+              { new: true, runValidators: false }
+            );
+
+            console.log("📊 Update result:", updatedUser ? "SUCCESS" : "RETURNED NULL");
+
+            if (updatedUser) {
+              console.log("✅ USER UNLOCKED SUCCESSFULLY:", updatedUser.email);
+              console.log("🎉 User subscription fields AFTER update:", {
+                _id: updatedUser._id,
+                email: updatedUser.email,
+                isSubscriptionActive: updatedUser.isSubscriptionActive,
+                isSubscribed: updatedUser.isSubscribed,
+                planType: updatedUser.planType,
+                subscriptionEnd: updatedUser.subscriptionEnd,
+                stripeSubscriptionId: updatedUser.stripeSubscriptionId
+              });
+            } else {
+              console.error("❌ User not found or update returned null for ID:", userId);
+            }
+          } catch (updateError) {
+            console.error("❌ Error updating user in webhook:", updateError.message);
+            console.error("   Error stack:", updateError.stack);
+          }
+        } else {
+          console.error("❌ No userId found in metadata or payment record");
+          console.error("   session.metadata:", session.metadata);
+          console.error("   payment:", payment);
+        }
+      } catch (checkoutError) {
+        console.error("❌ Error processing checkout.session.completed:", checkoutError.message);
+        console.error("Stack:", checkoutError.stack);
       }
     }
   }
