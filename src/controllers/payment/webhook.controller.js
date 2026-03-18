@@ -91,16 +91,15 @@ export const stripeWebhook = async (req, res) => {
           stripeCustomerId: session.customer,
           stripeSubscriptionId: session.subscription,
           status: "active",
-          currentPeriodEnd: new Date(
-            subscription.current_period_end * 1000
-          ),
+          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
         },
         { new: true }
       );
 
       // ✅ UPDATE USER STATUS (CORE CONCEPT)
-      const userId = session.metadata?.userId;
-      const plan = session.metadata?.plan || "monthly";
+      // Fallback: If metadata is missing, get userId from the Payment record we just found/updated
+      let userId = session.metadata?.userId || payment?.userId;
+      const plan = session.metadata?.plan || payment?.plan || "monthly";
       if (userId) {
         console.log(`🔄 Updating User ${userId} Subscription Status...`);
 
