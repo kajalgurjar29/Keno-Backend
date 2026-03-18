@@ -62,23 +62,14 @@ import User from "../../models/User.model.js";
 export const createCheckout = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { plan } = req.body; // "monthly" or "yearly"
     const user = await User.findById(userId);
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    if (!plan) {
-      return res.status(400).json({ message: "Plan (monthly or yearly) is required" });
-    }
-
-    let priceId;
-    if (plan === "yearly") {
-      priceId = process.env.STRIPE_YEARLY_PRICE_ID;
-    } else {
-      priceId = process.env.STRIPE_MONTHLY_PRICE_ID || process.env.STRIPE_PRICE_ID;
-    }
+    const plan = "monthly"; // Only monthly plan available
+    const priceId = process.env.STRIPE_MONTHLY_PRICE_ID || process.env.STRIPE_PRICE_ID;
 
     if (!priceId) {
       return res.status(500).json({ message: "Stripe Price ID not configured for selected plan" });
@@ -107,14 +98,82 @@ export const createCheckout = async (req, res) => {
     await Payment.create({
       userId,
       stripeSessionId: session.id,
-      plan: plan,
-      amount: plan === "yearly" ? 299.99 : 29.99, // Adjust standard amounts as fallback
+      plan: "monthly",
+      amount: 29.99,
       status: "pending",
     });
 
     res.json({ url: session.url });
   } catch (err) {
     console.error("Stripe Checkout Error:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const cancelSubscription = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Find user's payment record
+    const payment = await Payment.findOne({ userId, status: "active" });
+
+    if (!payment) {
+      return res.status(404).json({ message: "No active subscription found" });
+    }
+
+    if (!payment.stripeSubscriptionId) {
+      return res.status(400).json({ message: "Stripe subscription ID not found" });
+    }
+
+    console.log("🔄 Cancelling Stripe subscription:", payment.stripeSubscriptionId);
+
+    // Cancel subscription on Stripe
+    await stripe.subscriptions.del(payment.stripeSubscriptionId);
+
+    // Update payment status
+    await Payment.findByIdAndUpdate(payment._id, {
+      status: "cancelled",
+    });
+
+    // Update user subscription
+    await User.findByIdAndUpdate(userId, {
+      isSubscriptionActive: false,
+      isSubscribed: false,
+    });
+
+    console.log("✅ Subscription cancelled for user:", userId);
+    res.json({ 
+      message: "Subscription cancelled successfully",
+      userId,
+      stripeSubscriptionId: payment.stripeSubscriptionId
+    });
+  } catch (err) {
+    console.error("❌ Cancel subscription error:", err.message);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const getPaymentHistory = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const payments = await Payment.find({ userId }).sort({ createdAt: -1 });
+    
+    res.json({
+      total: payments.length,
+      payments: payments.map(p => ({
+        _id: p._id,
+        stripeSessionId: p.stripeSessionId,
+        stripeSubscriptionId: p.stripeSubscriptionId,
+        plan: p.plan,
+        amount: p.amount,
+        status: p.status,
+        currentPeriodEnd: p.currentPeriodEnd,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt
+      }))
+    });
+  } catch (err) {
+    console.error("❌ Get payment history error:", err.message);
     res.status(500).json({ message: err.message });
   }
 };

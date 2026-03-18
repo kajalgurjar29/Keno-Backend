@@ -31,7 +31,7 @@ export const checkSubscription = async (req, res, next) => {
             isSubscriptionActive: false,
             planType: user.planType,
             trialExpired: user.planType === "trial" && now > new Date(user.trialEnd),
-            subscriptionExpired: (user.planType === "monthly" || user.planType === "yearly") && now > new Date(user.subscriptionEnd)
+            subscriptionExpired: user.planType === "monthly" && now > new Date(user.subscriptionEnd)
         });
     } catch (error) {
         console.error("Access Check Error:", error);

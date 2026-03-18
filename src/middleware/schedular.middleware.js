@@ -115,7 +115,7 @@ async function runExpiryCheck() {
         isSubscriptionActive: true,
         $or: [
           { planType: "trial", trialEnd: { $lt: now } },
-          { planType: { $in: ["monthly", "yearly"] }, subscriptionEnd: { $lt: now } },
+          { planType: { $in: ["monthly"] }, subscriptionEnd: { $lt: now } },
         ],
       },
       { $set: { isSubscriptionActive: false } }
