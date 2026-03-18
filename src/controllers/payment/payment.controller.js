@@ -87,9 +87,9 @@ export const createCheckout = async (req, res) => {
       allow_promotion_codes: true, // ✅ ENABLES THE PROMO CODE FIELD
       success_url: `${origin}/payment-success`,
       cancel_url: `${origin}/payment-cancel`,
-      metadata: { userId, plan: "monthly" },
+      metadata: { userId: userId.toString(), plan: "monthly" },
       subscription_data: {
-        metadata: { userId, plan: "monthly" }, // ✅ PERSISTS TO FUTURE INVOICES
+        metadata: { userId: userId.toString(), plan: "monthly" }, // ✅ PERSISTS TO FUTURE INVOICES
       },
       line_items: [
         {
