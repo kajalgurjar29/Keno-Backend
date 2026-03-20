@@ -121,9 +121,15 @@ export const stripeWebhook = async (req, res) => {
         }
 
         if (user) {
-          console.log(`� Updating User ${user.email} Subscription Status...`);
+          console.log(`📡 Identified User ${user.email}. Updating Subscription Status...`);
           
-          const plan = session.metadata?.plan || payment?.plan || "monthly";
+          let plan = session.metadata?.plan || payment?.plan || "monthly";
+          
+          // Ensure the plan matches our model enum (must be "trial" or "monthly")
+          if (plan !== "monthly" && plan !== "trial") {
+            console.log(`⚠️ Stripe plan '${plan}' is not a valid enum member. Falling back to 'monthly'.`);
+            plan = "monthly";
+          }
           
           const updatedUser = await User.findByIdAndUpdate(
             user._id, 
@@ -141,11 +147,17 @@ export const stripeWebhook = async (req, res) => {
 
           if (updatedUser) {
             console.log("✅ USER UNLOCKED SUCCESSFULLY:", updatedUser.email);
+            console.log("📊 Fields Updated:", {
+              isActive: updatedUser.isSubscriptionActive,
+              isSubscribed: updatedUser.isSubscribed,
+              plan: updatedUser.planType
+            });
           }
         } else {
           console.error("❌ Could not identify user for session:", session.id);
           console.error("   Metadata userId:", session.metadata?.userId);
           console.error("   Customer ID:", session.customer);
+          console.error("   Customer Email:", session.customer_details?.email);
         }
       } catch (checkoutError) {
         console.error("❌ Error processing checkout.session.completed:", checkoutError.message);
@@ -169,41 +181,63 @@ export const stripeWebhook = async (req, res) => {
           subscription = await stripe.subscriptions.retrieve(invoice.subscription);
         }
 
-        // Update Payment record
-        const payment = await Payment.findOneAndUpdate(
-          { stripeSubscriptionId: invoice.subscription },
-          {
-            status: "active",
-            currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-          },
-          { new: true }
-        );
-
-        // Identify User
+        // 1. Identify User (Priority Order)
         let user;
+        
+        // Try by Payment record with subscription ID
+        const payment = await Payment.findOne({ stripeSubscriptionId: invoice.subscription });
         if (payment?.userId) {
           user = await User.findById(payment.userId);
         }
         
-        // 🕵️ Fallback 1: Identify via Email from invoice
-        if (!user && invoice.customer_email) {
-          user = await User.findOne({ email: invoice.customer_email.toLowerCase() });
-        }
-
-        // 🕵️ Fallback 2: find by Customer ID
+        // 🕵️ Fallback 1: Identify via Stripe Customer ID (on the User record)
         if (!user && invoice.customer) {
+          console.log("🔍 Fallback: Searching user by stripeCustomerId:", invoice.customer);
           user = await User.findOne({ stripeCustomerId: invoice.customer });
         }
 
+        // 🕵️ Fallback 2: Identify via Email from invoice
+        if (!user && invoice.customer_email) {
+          console.log("🔍 Fallback: Searching user by invoice.customer_email:", invoice.customer_email);
+          user = await User.findOne({ email: invoice.customer_email.toLowerCase() });
+        }
+
+        // 🕵️ Fallback 3: From the stripe subscription object directly
+        if (!user && subscription.customer) {
+             const customer = await stripe.customers.retrieve(subscription.customer);
+             if (customer.email) {
+               console.log("🔍 Fallback: Searching user by subscription.customer.email:", customer.email);
+               user = await User.findOne({ email: customer.email.toLowerCase() });
+             }
+        }
+
         if (user) {
+          console.log(`📡 Invoice Paid: Updating User ${user.email}...`);
+          
+          // Update User
           await User.findByIdAndUpdate(user._id, {
             isSubscriptionActive: true,
             isSubscribed: true,
             subscriptionEnd: new Date(subscription.current_period_end * 1000),
             stripeSubscriptionId: invoice.subscription,
-            stripeCustomerId: invoice.customer
+            stripeCustomerId: user.stripeCustomerId || invoice.customer
           });
-          console.log("✅ SUBSCRIPTION UPDATED FOR USER:", user.email);
+
+          // Update Payment record
+          await Payment.findOneAndUpdate(
+            { stripeSubscriptionId: invoice.subscription },
+            {
+              status: "active",
+              userId: user._id, 
+              stripeCustomerId: invoice.customer,
+              currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+            },
+            { new: true, upsert: true }
+          );
+
+          console.log("✅ SUBSCRIPTION UPDATED SUCCESSFULLY FOR USER:", user.email);
+        } else {
+          console.error("❌ Invoice Paid: Could not determine user for subscription:", invoice.subscription);
         }
       } catch (invoiceError) {
         console.error("❌ Error processing invoice success:", invoiceError.message);
