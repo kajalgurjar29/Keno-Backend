@@ -43,7 +43,10 @@ export const stripeWebhook = async (req, res) => {
   }
 
   try {
-    console.log("📦 Webhook Body Type:", typeof req.body, "IsBuffer:", Buffer.isBuffer(req.body));
+    console.log("📦 Webhook Body Type:", typeof req.body);
+    console.log("📦 Is Buffer:", Buffer.isBuffer(req.body));
+    console.log("📦 Secret present:", !!process.env.STRIPE_WEBHOOK_SECRET);
+    console.log("🔗 Signature present:", !!sig);
 
     // 🧪 MOCK MODE FOR POSTMAN TESTING
     if (sig === "mock") {
@@ -52,7 +55,12 @@ export const stripeWebhook = async (req, res) => {
       event = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
     } else {
       // Ensure req.body is a buffer for constructEvent
-      const payload = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
+      if (!Buffer.isBuffer(req.body)) {
+        console.error("❌ CRITICAL: Webhook body is NOT a buffer! Signature verification WILL fail.");
+        console.error("Check app.js middleware order and express.raw usage.");
+      }
+      
+      const payload = req.body;
 
       event = stripe.webhooks.constructEvent(
         payload,
@@ -64,6 +72,7 @@ export const stripeWebhook = async (req, res) => {
   } catch (err) {
     console.error("❌ Webhook Error:", err.message);
     console.error("Signature received:", sig ? "YES" : "NO");
+    console.error("Hint: This is often caused by an incorrect STRIPE_WEBHOOK_SECRET or modified req.body.");
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 

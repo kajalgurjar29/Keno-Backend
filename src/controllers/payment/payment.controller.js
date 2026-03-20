@@ -82,7 +82,7 @@ export const createCheckout = async (req, res) => {
       allow_promotion_codes: true, // ✅ ENABLES THE PROMO CODE FIELD
       success_url: `${process.env.FRONTEND_URL || process.env.SERVER_URL}/payment-success`,
       cancel_url: `${process.env.FRONTEND_URL || process.env.SERVER_URL}/payment-cancel`,
-      metadata: { userId, plan },
+      metadata: { userId: userId.toString(), plan },
       line_items: [
         {
           price: priceId,
