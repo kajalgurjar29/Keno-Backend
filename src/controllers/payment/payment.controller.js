@@ -187,12 +187,13 @@ export const verifyStatus = async (req, res) => {
 
 export const verifyCheckoutSession = async (req, res) => {
   try {
-    const userId = req.user.id;
     const sessionId = req.query.session_id || req.body.session_id;
 
     if (!sessionId) {
       return res.status(400).json({ success: false, message: "session_id is required" });
     }
+
+    let userId = req.user?.id;
 
     let session;
     try {
@@ -213,6 +214,20 @@ export const verifyCheckoutSession = async (req, res) => {
       return res.status(404).json({ success: false, message: "Checkout session not found" });
     }
 
+    if (!userId) {
+      const existingPayment = await Payment.findOne({ stripeSessionId: sessionId });
+      userId = existingPayment?.userId?.toString();
+    }
+
+    if (!userId && session.customer_details?.email) {
+      const user = await User.findOne({ email: session.customer_details.email.toLowerCase() });
+      userId = user?._id?.toString();
+    }
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "Unable to determine user for session." });
+    }
+
     const subscriptionId = session.subscription?.id || session.subscription || null;
     const customerId = session.customer?.id || session.customer || session.customer_details?.id || null;
     const plan = session.metadata?.plan || "monthly";
@@ -225,8 +240,7 @@ export const verifyCheckoutSession = async (req, res) => {
         console.error("❌ Stripe: failed to retrieve subscription", subsErr);
 
         if (subsErr.type === "StripeInvalidRequestError") {
-          // Not ready yet, Subscription may take a moment to be available in Stripe
-          subscription = null;
+          subscription = null; // maybe not provisioned yet
         } else {
           return res.status(500).json({ success: false, message: "Failed to retrieve Stripe subscription" });
         }
