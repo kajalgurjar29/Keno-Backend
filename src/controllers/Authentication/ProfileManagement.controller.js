@@ -2,6 +2,33 @@ import User from "../../models/User.model.js";
 import eventBus, { EVENTS } from "../../utils/eventBus.js";
 import { calculateSubscriptionStatus } from "../../utils/subscriptionUtils.js";
 
+// @desc Get current user data
+// @route GET /api/v1/users/me
+// @access Private
+export const getMe = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId).select("-password -role -knownIPs");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // RECALCULATE SUBSCRIPTION STATUS
+    const { isSubscriptionActive, isSubscribed } = calculateSubscriptionStatus(user);
+    if (user.isSubscriptionActive !== isSubscriptionActive || user.isSubscribed !== isSubscribed) {
+      user.isSubscriptionActive = isSubscriptionActive;
+      user.isSubscribed = isSubscribed;
+      await user.save();
+    }
+
+    res.json(user);
+  } catch (error) {
+    console.error("Error in getMe:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 // @desc Get user data by ID data
 // @route GET /api/profile/user/:id
 // controllers/Authentication/ProfileManagement.js

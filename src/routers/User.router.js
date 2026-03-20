@@ -8,12 +8,14 @@ import {
   saveFcmToken,
   deleteAccount,
 } from "../controllers/Authentication/UserRegister.controller.js";
+import { getMe } from "../controllers/Authentication/ProfileManagement.controller.js";
 import verifyAPIKey from "../middleware/verifyAPIKey.js";
 import auth from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
 router.post("/register", verifyAPIKey, registerUser);
+router.get("/me", auth, getMe);
 router.post("/verify-otp", verifyAPIKey, verifyOtp);
 router.post("/set-password", verifyAPIKey, setPassword);
 router.post("/login", verifyAPIKey, loginUser);

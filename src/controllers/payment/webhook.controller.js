@@ -111,6 +111,7 @@ export const stripeWebhook = async (req, res) => {
         const payment = await Payment.findOneAndUpdate(
           { stripeSessionId: session.id },
           {
+            userId: session.metadata?.userId, // ✅ Ensure userId is always attached
             stripeCustomerId: session.customer,
             stripeSubscriptionId: session.subscription,
             status: "active",
