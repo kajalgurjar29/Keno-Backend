@@ -177,3 +177,58 @@ export const getPaymentHistory = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+export const verifyStatus = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    console.log("🔍 Manually verifying status for user:", userId);
+
+    // 1. Find the latest payment record for this user
+    const payment = await Payment.findOne({ userId }).sort({ createdAt: -1 });
+    
+    if (!payment || !payment.stripeSubscriptionId) {
+      // If no subscription ID, check if they have a customer ID
+      const user = await User.findById(userId);
+      if (user?.stripeCustomerId) {
+        const subscriptions = await stripe.subscriptions.list({
+          customer: user.stripeCustomerId,
+          status: 'active',
+          limit: 1
+        });
+        
+        if (subscriptions.data.length > 0) {
+          const sub = subscriptions.data[0];
+          await User.findByIdAndUpdate(userId, {
+            isSubscriptionActive: true,
+            isSubscribed: true,
+            planType: "monthly",
+            subscriptionEnd: new Date(sub.current_period_end * 1000),
+            stripeSubscriptionId: sub.id,
+            stripeCustomerId: sub.customer
+          });
+          return res.json({ success: true, message: "Status updated from Stripe", status: "active" });
+        }
+      }
+      return res.json({ success: false, message: "No active subscription found on Stripe" });
+    }
+
+    // 2. Fetch the actual subscription from Stripe
+    const subscription = await stripe.subscriptions.retrieve(payment.stripeSubscriptionId);
+    
+    if (subscription.status === "active" || subscription.status === "trialing") {
+      await User.findByIdAndUpdate(userId, {
+        isSubscriptionActive: true,
+        isSubscribed: true,
+        subscriptionEnd: new Date(subscription.current_period_end * 1000),
+      });
+      
+      await Payment.findByIdAndUpdate(payment._id, { status: "active" });
+      
+      return res.json({ success: true, status: "active" });
+    } else {
+      return res.json({ success: true, status: subscription.status });
+    }
+  } catch (err) {
+    console.error("❌ Verify status error:", err.message);
+    res.status(500).json({ message: err.message });
+  }
+};

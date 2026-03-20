@@ -1,5 +1,5 @@
 import express from "express";
-import { createCheckout, cancelSubscription, getPaymentHistory } from "../controllers/payment/payment.controller.js";
+import { createCheckout, cancelSubscription, getPaymentHistory, verifyStatus } from "../controllers/payment/payment.controller.js";
 import { devAutoActivate } from "../controllers/payment/webhook.controller.js";
 import auth from "../middleware/auth.middleware.js";
 

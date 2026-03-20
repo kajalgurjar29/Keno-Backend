@@ -100,7 +100,7 @@ export const stripeWebhook = async (req, res) => {
           { new: true, upsert: true }
         );
 
-        // ✅ Step 2: Identify User (Metadata -> Payment Record -> Customer ID)
+        // ✅ Step 2: Identify User (Metadata -> Payment Record -> Email -> Customer ID)
         let userId = session.metadata?.userId || payment?.userId;
         let user;
 
@@ -108,7 +108,13 @@ export const stripeWebhook = async (req, res) => {
           user = await User.findById(userId);
         }
 
-        // �️ Fallback: find by Customer ID if userId lookup failed
+        // 🕵️ Fallback 1: Identify via Email from Stripe Session
+        if (!user && session.customer_details?.email) {
+          console.log("🔍 Fallback: Searching user by session.customer_details.email:", session.customer_details.email);
+          user = await User.findOne({ email: session.customer_details.email.toLowerCase() });
+        }
+
+        // 🕵️ Fallback 2: find by Customer ID if userId lookup failed
         if (!user && session.customer) {
           console.log("🔍 Fallback: Searching user by stripeCustomerId:", session.customer);
           user = await User.findOne({ stripeCustomerId: session.customer });
@@ -179,7 +185,12 @@ export const stripeWebhook = async (req, res) => {
           user = await User.findById(payment.userId);
         }
         
-        // 🕵️ Fallback: find by Customer ID
+        // 🕵️ Fallback 1: Identify via Email from invoice
+        if (!user && invoice.customer_email) {
+          user = await User.findOne({ email: invoice.customer_email.toLowerCase() });
+        }
+
+        // 🕵️ Fallback 2: find by Customer ID
         if (!user && invoice.customer) {
           user = await User.findOne({ stripeCustomerId: invoice.customer });
         }
