@@ -32,7 +32,7 @@ export const createCheckout = async (req, res) => {
       mode: "subscription",
       customer_email: user.email,
       allow_promotion_codes: true, // ✅ ENABLES THE PROMO CODE FIELD
-      success_url: `${process.env.FRONTEND_URL || process.env.SERVER_URL}/payment-success`,
+      success_url: `${process.env.FRONTEND_URL || process.env.SERVER_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.FRONTEND_URL || process.env.SERVER_URL}/payment-cancel`,
       metadata: { userId: userId.toString(), plan },
       line_items: [
@@ -182,5 +182,69 @@ export const verifyStatus = async (req, res) => {
   } catch (err) {
     console.error("❌ Verify status error:", err.message);
     res.status(500).json({ message: err.message });
+  }
+};
+
+export const verifyCheckoutSession = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const sessionId = req.query.session_id || req.body.session_id;
+
+    if (!sessionId) {
+      return res.status(400).json({ message: "session_id is required" });
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["subscription", "customer"],
+    });
+
+    if (!session) {
+      return res.status(404).json({ message: "Checkout session not found" });
+    }
+
+    const subscriptionId = session.subscription?.id || session.subscription;
+    const customerId = session.customer || session.customer?.id || session.customer_details?.id;
+    const plan = session.metadata?.plan || "monthly";
+
+    let subscription = null;
+    if (subscriptionId) {
+      subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    }
+
+    await Payment.findOneAndUpdate(
+      { stripeSessionId: session.id },
+      {
+        userId,
+        stripeSessionId: session.id,
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: subscriptionId,
+        status: subscription && (subscription.status === "active" || subscription.status === "trialing") ? "active" : "pending",
+        currentPeriodEnd: subscription ? new Date(subscription.current_period_end * 1000) : null,
+      },
+      { upsert: true, new: true }
+    );
+
+    await User.findByIdAndUpdate(
+      userId,
+      {
+        isSubscriptionActive: subscription && (subscription.status === "active" || subscription.status === "trialing"),
+        isSubscribed: subscription && (subscription.status === "active" || subscription.status === "trialing"),
+        planType: plan,
+        subscriptionStart: subscription ? new Date(subscription.start_date * 1000) : new Date(),
+        subscriptionEnd: subscription ? new Date(subscription.current_period_end * 1000) : null,
+        stripeSubscriptionId: subscriptionId || undefined,
+        stripeCustomerId: customerId || undefined,
+      },
+      { new: true }
+    );
+
+    return res.json({
+      success: true,
+      session,
+      subscription: subscription || null,
+    });
+  } catch (err) {
+    console.error("❌ verifyCheckoutSession error:", err?.message || err);
+    return res.status(500).json({ message: err?.message || "Failed to verify checkout session" });
   }
 };
