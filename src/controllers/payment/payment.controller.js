@@ -191,25 +191,49 @@ export const verifyCheckoutSession = async (req, res) => {
     const sessionId = req.query.session_id || req.body.session_id;
 
     if (!sessionId) {
-      return res.status(400).json({ message: "session_id is required" });
+      return res.status(400).json({ success: false, message: "session_id is required" });
     }
 
-    const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ["subscription", "customer"],
-    });
+    let session;
+    try {
+      session = await stripe.checkout.sessions.retrieve(sessionId, {
+        expand: ["subscription", "customer"],
+      });
+    } catch (stripeErr) {
+      console.error("❌ Stripe: failed to retrieve checkout session", stripeErr);
+
+      if (stripeErr.type === "StripeInvalidRequestError") {
+        return res.status(404).json({ success: false, message: "Checkout session not found" });
+      }
+
+      return res.status(500).json({ success: false, message: "Failed to retrieve checkout session" });
+    }
 
     if (!session) {
-      return res.status(404).json({ message: "Checkout session not found" });
+      return res.status(404).json({ success: false, message: "Checkout session not found" });
     }
 
-    const subscriptionId = session.subscription?.id || session.subscription;
-    const customerId = session.customer || session.customer?.id || session.customer_details?.id;
+    const subscriptionId = session.subscription?.id || session.subscription || null;
+    const customerId = session.customer?.id || session.customer || session.customer_details?.id || null;
     const plan = session.metadata?.plan || "monthly";
 
     let subscription = null;
     if (subscriptionId) {
-      subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      try {
+        subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      } catch (subsErr) {
+        console.error("❌ Stripe: failed to retrieve subscription", subsErr);
+
+        if (subsErr.type === "StripeInvalidRequestError") {
+          // Not ready yet, Subscription may take a moment to be available in Stripe
+          subscription = null;
+        } else {
+          return res.status(500).json({ success: false, message: "Failed to retrieve Stripe subscription" });
+        }
+      }
     }
+
+    const status = subscription && (subscription.status === "active" || subscription.status === "trialing") ? "active" : "pending";
 
     await Payment.findOneAndUpdate(
       { stripeSessionId: session.id },
@@ -218,7 +242,7 @@ export const verifyCheckoutSession = async (req, res) => {
         stripeSessionId: session.id,
         stripeCustomerId: customerId,
         stripeSubscriptionId: subscriptionId,
-        status: subscription && (subscription.status === "active" || subscription.status === "trialing") ? "active" : "pending",
+        status,
         currentPeriodEnd: subscription ? new Date(subscription.current_period_end * 1000) : null,
       },
       { upsert: true, new: true }
@@ -227,8 +251,8 @@ export const verifyCheckoutSession = async (req, res) => {
     await User.findByIdAndUpdate(
       userId,
       {
-        isSubscriptionActive: subscription && (subscription.status === "active" || subscription.status === "trialing"),
-        isSubscribed: subscription && (subscription.status === "active" || subscription.status === "trialing"),
+        isSubscriptionActive: status === "active",
+        isSubscribed: status === "active",
         planType: plan,
         subscriptionStart: subscription ? new Date(subscription.start_date * 1000) : new Date(),
         subscriptionEnd: subscription ? new Date(subscription.current_period_end * 1000) : null,
@@ -238,13 +262,22 @@ export const verifyCheckoutSession = async (req, res) => {
       { new: true }
     );
 
+    if (!subscription) {
+      return res.status(202).json({
+        success: false,
+        message: "Checkout session verified, subscription is not active yet. Please wait a few seconds and try again.",
+        session,
+      });
+    }
+
     return res.json({
       success: true,
+      message: "Subscription is active",
       session,
-      subscription: subscription || null,
+      subscription,
     });
   } catch (err) {
     console.error("❌ verifyCheckoutSession error:", err?.message || err);
-    return res.status(500).json({ message: err?.message || "Failed to verify checkout session" });
+    return res.status(500).json({ success: false, message: err?.message || "Failed to verify checkout session" });
   }
 };
