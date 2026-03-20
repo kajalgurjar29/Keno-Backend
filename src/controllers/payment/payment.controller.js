@@ -1,59 +1,5 @@
 
 
-// import stripe from "../../config/stripe.js";
-// import Payment from "../../models/Payment.js";
-
-// export const createCheckout = async (req, res) => {
-//   try {
-//     const userId = req.user.id;
-//     const email = req.user.email;
-
-//     const session = await stripe.checkout.sessions.create({
-//       payment_method_types: ["card"],
-//       mode: "subscription",
-
-//       customer_email: email,
-
-//       subscription_data: {
-//         trial_period_days: 7, // ✅ FREE TRIAL
-//       },
-
-//       line_items: [
-//         {
-//           price_data: {
-//             currency: "usd",
-//             product_data: {
-//               name: "Puntmate Monthly Plan",
-//             },
-//             unit_amount: 2999, // $29.99
-//             recurring: {
-//               interval: "month",
-//             },
-//           },
-//           quantity: 1,
-//         },
-//       ],
-
-//       success_url: `${process.env.FRONTEND_URL || process.env.SERVER_URL}/payment-success`,
-//       cancel_url: `${process.env.FRONTEND_URL || process.env.SERVER_URL}/payment-cancel`,
-
-//       metadata: { userId },
-//     });
-
-//     await Payment.create({
-//       userId,
-//       stripeSessionId: session.id,
-//       plan: "monthly",
-//       amount: 29.99,
-//       status: "pending", 
-//     });
-
-//     res.json({ url: session.url });
-//   } catch (err) {
-//     res.status(500).json({ message: err.message });
-//   }
-// };
-
 import stripe from "../../config/stripe.js";
 import Payment from "../../models/Payment.js";
 
@@ -68,10 +14,16 @@ export const createCheckout = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    // Check if user already has an active subscription
+    if (user.isSubscriptionActive) {
+      return res.status(400).json({ message: "User already has an active subscription" });
+    }
+
     const plan = "monthly"; // Only monthly plan available
     const priceId = process.env.STRIPE_MONTHLY_PRICE_ID || process.env.STRIPE_PRICE_ID;
 
     if (!priceId) {
+      console.error("❌ STRIPE_MONTHLY_PRICE_ID or STRIPE_PRICE_ID not configured");
       return res.status(500).json({ message: "Stripe Price ID not configured for selected plan" });
     }
 
@@ -106,7 +58,7 @@ export const createCheckout = async (req, res) => {
     res.json({ url: session.url });
   } catch (err) {
     console.error("Stripe Checkout Error:", err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: err.message || "Failed to create checkout session" });
   }
 };
 

@@ -50,6 +50,7 @@ export const stripeWebhook = async (req, res) => {
     } else {
       if (!Buffer.isBuffer(req.body)) {
         console.error("❌ CRITICAL: Webhook body is NOT a buffer! Signature verification WILL fail.");
+        return res.status(400).send("Invalid webhook body format");
       }
       
       const payload = req.body;
