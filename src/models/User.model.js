@@ -85,7 +85,7 @@
 // export default mongoose.model("User", userSchema);
 
 import mongoose from "mongoose";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 const userSchema = new mongoose.Schema(
   {
