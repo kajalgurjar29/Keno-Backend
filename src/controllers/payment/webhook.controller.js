@@ -1,6 +1,7 @@
 import stripe from "../../config/stripe.js";
 import Payment from "../../models/Payment.js";
 import User from "../../models/User.model.js";
+import { getIO } from "../../utils/socketUtils.js";
 
 // AUTO-ACTIVATE HELPER FOR LOCAL DEV
 export const devAutoActivate = async (req, res) => {
@@ -52,7 +53,7 @@ export const stripeWebhook = async (req, res) => {
         console.error("❌ CRITICAL: Webhook body is NOT a buffer! Signature verification WILL fail.");
         return res.status(400).send("Invalid webhook body format");
       }
-      
+
       const payload = req.body;
       event = stripe.webhooks.constructEvent(
         payload,
@@ -123,17 +124,17 @@ export const stripeWebhook = async (req, res) => {
 
         if (user) {
           console.log(`📡 Identified User ${user.email}. Updating Subscription Status...`);
-          
+
           let plan = session.metadata?.plan || payment?.plan || "monthly";
-          
+
           // Ensure the plan matches our model enum (must be "trial" or "monthly")
           if (plan !== "monthly" && plan !== "trial") {
             console.log(`⚠️ Stripe plan '${plan}' is not a valid enum member. Falling back to 'monthly'.`);
             plan = "monthly";
           }
-          
+
           const updatedUser = await User.findByIdAndUpdate(
-            user._id, 
+            user._id,
             {
               isSubscriptionActive: true,
               isSubscribed: true,
@@ -142,7 +143,7 @@ export const stripeWebhook = async (req, res) => {
               subscriptionEnd: new Date(subscription.current_period_end * 1000),
               stripeSubscriptionId: session.subscription,
               stripeCustomerId: session.customer
-            }, 
+            },
             { new: true }
           );
 
@@ -153,6 +154,19 @@ export const stripeWebhook = async (req, res) => {
               isSubscribed: updatedUser.isSubscribed,
               plan: updatedUser.planType
             });
+
+            // 📢 NOTIFY FRONTEND VIA SOCKET
+            try {
+              const io = getIO();
+              io.emit("payment-success", {
+                userId: updatedUser._id,
+                email: updatedUser.email,
+                status: "active"
+              });
+              console.log("📢 Emitted 'payment-success' socket event to user:", updatedUser._id);
+            } catch (socketErr) {
+              console.warn("⚠️ Failed to emit socket event (expected in scripts/testing):", socketErr.message);
+            }
           }
         } else {
           console.error("❌ Could not identify user for session:", session.id);
@@ -184,13 +198,13 @@ export const stripeWebhook = async (req, res) => {
 
         // 1. Identify User (Priority Order)
         let user;
-        
+
         // Try by Payment record with subscription ID
         const payment = await Payment.findOne({ stripeSubscriptionId: invoice.subscription });
         if (payment?.userId) {
           user = await User.findById(payment.userId);
         }
-        
+
         // 🕵️ Fallback 1: Identify via Stripe Customer ID (on the User record)
         if (!user && invoice.customer) {
           console.log("🔍 Fallback: Searching user by stripeCustomerId:", invoice.customer);
@@ -205,16 +219,16 @@ export const stripeWebhook = async (req, res) => {
 
         // 🕵️ Fallback 3: From the stripe subscription object directly
         if (!user && subscription.customer) {
-             const customer = await stripe.customers.retrieve(subscription.customer);
-             if (customer.email) {
-               console.log("🔍 Fallback: Searching user by subscription.customer.email:", customer.email);
-               user = await User.findOne({ email: customer.email.toLowerCase() });
-             }
+          const customer = await stripe.customers.retrieve(subscription.customer);
+          if (customer.email) {
+            console.log("🔍 Fallback: Searching user by subscription.customer.email:", customer.email);
+            user = await User.findOne({ email: customer.email.toLowerCase() });
+          }
         }
 
         if (user) {
           console.log(`📡 Invoice Paid: Updating User ${user.email}...`);
-          
+
           // Update User
           await User.findByIdAndUpdate(user._id, {
             isSubscriptionActive: true,
@@ -229,7 +243,7 @@ export const stripeWebhook = async (req, res) => {
             { stripeSubscriptionId: invoice.subscription },
             {
               status: "active",
-              userId: user._id, 
+              userId: user._id,
               stripeCustomerId: invoice.customer,
               currentPeriodEnd: new Date(subscription.current_period_end * 1000),
             },
@@ -237,6 +251,19 @@ export const stripeWebhook = async (req, res) => {
           );
 
           console.log("✅ SUBSCRIPTION UPDATED SUCCESSFULLY FOR USER:", user.email);
+
+          // 📢 NOTIFY FRONTEND VIA SOCKET
+          try {
+            const io = getIO();
+            io.emit("payment-success", {
+              userId: user._id,
+              email: user.email,
+              status: "active"
+            });
+            console.log("📢 Emitted 'payment-success' socket event to user:", user._id);
+          } catch (socketErr) {
+            console.warn("⚠️ Failed to emit socket event (expected in scripts/testing):", socketErr.message);
+          }
         } else {
           console.error("❌ Invoice Paid: Could not determine user for subscription:", invoice.subscription);
         }
@@ -251,11 +278,11 @@ export const stripeWebhook = async (req, res) => {
      =============================== */
   if (event.type === "customer.subscription.deleted" || event.type === "customer.subscription.updated") {
     const subscription = event.data.object;
-    
+
     // If it's a deletion or if it's an update where status is no longer active
-    if (event.type === "customer.subscription.deleted" || 
-       (event.type === "customer.subscription.updated" && subscription.status !== 'active' && subscription.status !== 'trialing')) {
-       
+    if (event.type === "customer.subscription.deleted" ||
+      (event.type === "customer.subscription.updated" && subscription.status !== 'active' && subscription.status !== 'trialing')) {
+
       const payment = await Payment.findOneAndUpdate(
         { stripeSubscriptionId: subscription.id },
         { status: "cancelled" },
@@ -281,7 +308,7 @@ export const stripeWebhook = async (req, res) => {
      =============================== */
   if (event.type === "invoice.payment_failed") {
     const invoice = event.data.object;
-    
+
     const payment = await Payment.findOne({ stripeSubscriptionId: invoice.subscription });
     let user;
     if (payment?.userId) user = await User.findById(payment.userId);
