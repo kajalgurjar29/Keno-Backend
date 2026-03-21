@@ -7,6 +7,7 @@ const router = express.Router();
 
 // Payment endpoints
 router.post("/checkout", auth, createCheckout);
+router.post("/create-checkout", auth, createCheckout);
 router.post("/cancel", auth, cancelSubscription);
 router.get("/history", auth, getPaymentHistory);
 // verifyCheckoutSession is called from Stripe redirect and should work even if token is missing
