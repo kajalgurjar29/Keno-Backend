@@ -6,8 +6,8 @@ import { checkSubscription } from "../middleware/subscription.middleware.js";
 const router = express.Router();
 
 // Apply auth and subscription check to all routes
-router.use(auth);
-router.use(checkSubscription);
+// router.use(auth);
+// router.use(checkSubscription);
 
 router.post("/", createAlert);
 router.get("/user/:userId", getUserAlerts);

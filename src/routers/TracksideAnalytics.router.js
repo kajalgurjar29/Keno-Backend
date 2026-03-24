@@ -5,10 +5,15 @@ import { checkSubscription } from "../middleware/subscription.middleware.js";
 
 const router = express.Router();
 
-router.get("/top-10", auth, checkSubscription, getTop10Exotics);
-router.get("/top-10-24h", auth, checkSubscription, getTop10Exotics24h);
-router.get("/dashboard-stats", auth, checkSubscription, getTracksideDashboardStats);
-router.get("/recent-results", auth, checkSubscription, getRecentTracksideResults);
-router.get("/horse-details/:horseNo", auth, checkSubscription, getTracksideHorseEntryDetails);
+router.get("/top-10", getTop10Exotics);
+router.get("/top-10-24h", getTop10Exotics24h);
+router.get("/dashboard-stats", getTracksideDashboardStats);
+router.get("/recent-results", getRecentTracksideResults);
+router.get("/horse-details/:horseNo", getTracksideHorseEntryDetails);
+// router.get("/top-10", auth, checkSubscription, getTop10Exotics);
+// router.get("/top-10-24h", auth, checkSubscription, getTop10Exotics24h);
+// router.get("/dashboard-stats", auth, checkSubscription, getTracksideDashboardStats);
+// router.get("/recent-results", auth, checkSubscription, getRecentTracksideResults);
+// router.get("/horse-details/:horseNo", auth, checkSubscription, getTracksideHorseEntryDetails);
 
 export default router;

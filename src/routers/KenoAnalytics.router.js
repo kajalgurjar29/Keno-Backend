@@ -5,7 +5,10 @@ import { checkSubscription } from "../middleware/subscription.middleware.js";
 
 const router = express.Router();
 
-router.get("/top-10", auth, checkSubscription, getTop10Keno);
-router.get("/top-10-24h", auth, checkSubscription, getTop10Keno24h);
+// router.get("/top-10", auth, checkSubscription, getTop10Keno);
+// router.get("/top-10-24h", auth, checkSubscription, getTop10Keno24h);
+
+router.get("/top-10", getTop10Keno);
+router.get("/top-10-24h", getTop10Keno24h);
 
 export default router;

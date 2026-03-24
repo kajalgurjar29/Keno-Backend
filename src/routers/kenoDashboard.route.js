@@ -5,6 +5,7 @@ import { checkSubscription } from "../middleware/subscription.middleware.js";
 
 const router = express.Router();
 
-router.get("/keno/dashboard-stats", auth, checkSubscription, getKenoDashboardStats);
+// router.get("/keno/dashboard-stats", auth, checkSubscription, getKenoDashboardStats);
+router.get("/keno/dashboard-stats", getKenoDashboardStats);
 
 export default router;

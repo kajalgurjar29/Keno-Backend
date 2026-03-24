@@ -12,8 +12,8 @@ import { checkSubscription } from "../middleware/subscription.middleware.js";
 
 const router = express.Router();
 
-router.use(auth);
-router.use(checkSubscription);
+// router.use(auth);
+// router.use(checkSubscription);
 
 // Analyze all locations and generate overdue combos
 router.get("/generate/", getOverdueCombos);

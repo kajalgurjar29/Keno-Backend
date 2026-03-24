@@ -6,8 +6,8 @@ import { checkSubscription } from "../middleware/subscription.middleware.js";
 
 const router = express.Router();
 
-router.use(auth);
-router.use(checkSubscription);
+// router.use(auth);
+// router.use(checkSubscription);
 
 router.get("/trackside", analyzeTracksideHistoricalFrequency);
 router.post("/keno", analyzeKenoHistoricalFrequency);
