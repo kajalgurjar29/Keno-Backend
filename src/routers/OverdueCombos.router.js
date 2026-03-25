@@ -7,8 +7,8 @@ import {
   getTracksideOverdue,
   getTracksideOverduePagination,
 } from "../controllers/ExoticPredictor/tracksideOverdue.controller.js";
-import auth from "../middleware/auth.middleware.js";
-import { checkSubscription } from "../middleware/subscription.middleware.js";
+// import auth from "../middleware/auth.middleware.js";
+// import { checkSubscription } from "../middleware/subscription.middleware.js";
 
 const router = express.Router();
 

@@ -1,7 +1,7 @@
 import express from "express";
 import { getTop10Exotics, getTop10Exotics24h, getTracksideHorseEntryDetails, getTracksideDashboardStats, getRecentTracksideResults } from "../controllers/TracksideAnalytics/TracksideAnalytics.controller.js";
-import auth from "../middleware/auth.middleware.js";
-import { checkSubscription } from "../middleware/subscription.middleware.js";
+// import auth from "../middleware/auth.middleware.js";
+// import { checkSubscription } from "../middleware/subscription.middleware.js";
 
 const router = express.Router();
 

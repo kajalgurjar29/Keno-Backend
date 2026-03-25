@@ -2,8 +2,8 @@ import express from "express";
 import { getLiveKenoResult, getKenoDrawHistory, getKenoHeadsTailsHistory } from "../controllers/kenoScraper/kenoLive.controller.js";
 import { getNumberFrequency, getOddEvenDistribution } from "../controllers/kenoScraper/kenoFrequency.controller.js";
 import { getUpcomingKenoDraw, getUpcomingTracksideDraw } from "../controllers/kenoScraper/UpcomingKenoDraw.js";
-import auth from "../middleware/auth.middleware.js";
-import { checkSubscription } from "../middleware/subscription.middleware.js";
+// import auth from "../middleware/auth.middleware.js";
+// import { checkSubscription } from "../middleware/subscription.middleware.js";
 
 const router = express.Router();
 
