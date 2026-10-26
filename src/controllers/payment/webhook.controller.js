@@ -97,7 +97,7 @@ export const stripeWebhook = async (req, res) => {
             stripeCustomerId: session.customer,
             stripeSubscriptionId: session.subscription,
             status: "active",
-            currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+            currentPeriodEnd: new Date((subscription.items?.data?.[0]?.current_period_end ?? subscription.current_period_end) * 1000),
           },
           { new: true, upsert: true }
         );
@@ -140,7 +140,7 @@ export const stripeWebhook = async (req, res) => {
               isSubscribed: true,
               planType: plan,
               subscriptionStart: new Date(),
-              subscriptionEnd: new Date(subscription.current_period_end * 1000),
+              subscriptionEnd: new Date((subscription.items?.data?.[0]?.current_period_end ?? subscription.current_period_end) * 1000),
               stripeSubscriptionId: session.subscription,
               stripeCustomerId: session.customer
             },
@@ -233,7 +233,7 @@ export const stripeWebhook = async (req, res) => {
           await User.findByIdAndUpdate(user._id, {
             isSubscriptionActive: true,
             isSubscribed: true,
-            subscriptionEnd: new Date(subscription.current_period_end * 1000),
+            subscriptionEnd: new Date((subscription.items?.data?.[0]?.current_period_end ?? subscription.current_period_end) * 1000),
             stripeSubscriptionId: invoice.subscription,
             stripeCustomerId: user.stripeCustomerId || invoice.customer
           });
@@ -245,7 +245,7 @@ export const stripeWebhook = async (req, res) => {
               status: "active",
               userId: user._id,
               stripeCustomerId: invoice.customer,
-              currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+              currentPeriodEnd: new Date((subscription.items?.data?.[0]?.current_period_end ?? subscription.current_period_end) * 1000),
             },
             { new: true, upsert: true }
           );
